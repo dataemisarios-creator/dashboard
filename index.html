@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Demo funcional de dashboard de performance multicanal." />
+    <title>Emisarios · Dashboard de seguimiento</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Saltar al contenido</a>
+    <div class="login-screen" id="login-screen">
+      <form class="login-card" id="login-form" novalidate>
+        <div class="login-brand">
+          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h12a5 5 0 0 1 0 10H9" /><path d="M4 14h9a5 5 0 0 1 0 10H4" /></svg></span>
+          <span><strong>Emisarios</strong><small>DASHBOARD DE SEGUIMIENTO</small></span>
+        </div>
+        <h1>Entrar al panel</h1>
+        <label>Usuario<input id="login-user" autocomplete="username" placeholder="tu usuario" /></label>
+        <label>Contraseña<input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••" /></label>
+        <p class="form-error" id="login-error" hidden></p>
+        <button class="apply-button" type="submit">Entrar</button>
+        <p class="login-help">Acceso restringido. El único usuario cargado es <strong>yan</strong>.</p>
+      </form>
+    </div>
+
+    <div class="app-shell" id="app-shell">
+      <aside class="sidebar" id="sidebar" aria-label="Navegación principal">
+        <div class="brand-row">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 4h12a5 5 0 0 1 0 10H9" /><path d="M4 14h9a5 5 0 0 1 0 10H4" /></svg>
+          </span>
+          <span class="brand-text"><strong>Emisarios</strong><small>DASHBOARD DE SEGUIMIENTO</small></span>
+        </div>
+
+        <button class="client-switcher" id="client-switcher" type="button" aria-label="Cambiar cliente">
+          <span class="client-avatar">GA</span>
+          <span class="client-name">Geely Argentina</span>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
+        </button>
+
+        <p class="nav-heading">CUENTAS PAGAS</p>
+        <nav aria-label="Cuentas pagas">
+          <button class="nav-item" data-platform="google" type="button">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 8 18H4z" /></svg></span>
+            <span class="nav-label">Google Ads</span><i></i>
+          </button>
+          <button class="nav-item active" data-platform="meta" type="button">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 15c0-4 2-8 4.5-8S11 12 12 12s2-5 4.5-5S21 11 21 15c0 2-1 3-2.5 3S15 15 12 15s-5 3-6.5 3S3 17 3 15Z" /></svg></span>
+            <span class="nav-label">Meta Ads</span><i></i>
+          </button>
+          <button class="nav-item" data-platform="tiktok" type="button">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 4v10.5a3.5 3.5 0 1 1-3-3.46" /><path d="M14 4c.6 2.4 2.2 3.8 5 4" /></svg></span>
+            <span class="nav-label">TikTok Ads</span><i></i>
+          </button>
+        </nav>
+
+        <p class="nav-heading">CUENTAS ORGÁNICAS</p>
+        <nav aria-label="Cuentas orgánicas">
+          <button class="nav-item" data-platform="tiktokOrganic" type="button">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 4v10.5a3.5 3.5 0 1 1-3-3.46" /><path d="M14 4c.6 2.4 2.2 3.8 5 4" /></svg></span>
+            <span class="nav-label">Tiktok</span><i></i>
+          </button>
+          <button class="nav-item" data-platform="instagram" type="button">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="5" /><circle cx="12" cy="12" r="3.6" /><circle cx="17.2" cy="6.8" r=".9" fill="currentColor" stroke="none" /></svg></span>
+            <span class="nav-label">Instagram/Facebook</span><i></i>
+          </button>
+        </nav>
+
+        <p class="nav-heading">ANÁLISIS</p>
+        <nav aria-label="Análisis">
+          <button class="nav-item" data-view="reports" type="button">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /><path d="M9 13h6M9 17h6" /></svg></span>
+            <span class="nav-label">Reportes</span><i></i>
+          </button>
+        </nav>
+
+        <p class="nav-heading nav-heading-admin">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6l1.4 1.4m10 10 1.4 1.4m0-12.8-1.4 1.4m-10 10-1.4 1.4" /></svg></span>
+          ADMINISTRACIÓN
+        </p>
+        <nav aria-label="Administración">
+          <button class="nav-item" data-view="users" type="button">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><circle cx="17.5" cy="9.5" r="2.4" /><path d="M15 19a4.6 4.6 0 0 1 5.5-3.9" /></svg></span>
+            <span class="nav-label">Usuarios y Accesos</span><i></i>
+          </button>
+          <button class="nav-item" data-view="profile" type="button">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5 20a7 7 0 0 1 14 0" /></svg></span>
+            <span class="nav-label">Mi Perfil</span><i></i>
+          </button>
+        </nav>
+
+        <button class="logout" id="logout" type="button">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4" /><path d="M15 8l4 4-4 4M19 12H9" /></svg></span>
+          <span class="nav-label">CERRAR SESIÓN</span>
+        </button>
+      </aside>
+
+      <main id="main-content" class="main-content">
+        <header class="topbar">
+          <div class="breadcrumb">
+            <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="Contraer o expandir el panel lateral" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+            </button>
+            <span id="breadcrumb"></span>
+          </div>
+          <button class="connection is-live" id="connection" type="button" aria-live="polite" title="Demo: clic para simular una caída de la conexión">
+            <span class="connection-dot" aria-hidden="true"></span>
+            <span class="connection-cross" aria-hidden="true">
+              <svg viewBox="0 0 18 18"><path d="M3 3l12 12M15 3 3 15" /></svg>
+            </span>
+            <span id="connection-text">Datos Sincronizados</span>
+          </button>
+        </header>
+
+        <!-- ─────────────── Vista: dashboard de plataforma ─────────────── -->
+        <div class="dashboard view" id="view-dashboard">
+          <section class="page-heading">
+            <div><p class="eyebrow" id="platform-eyebrow">PERFORMANCE</p><h1 id="platform-title">Meta Ads</h1><p id="platform-description">Rendimiento de campañas de Facebook e Instagram.</p></div>
+            <div class="heading-actions">
+              <button class="primary-action" type="button" id="export-view">Descargar Vista Actual</button>
+              <button class="primary-action ghost" type="button" id="export-all">Descargar Todo</button>
+            </div>
+          </section>
+
+          <section class="filters-card" aria-label="Filtros del dashboard">
+            <div class="filter-row">
+              <div class="popover-wrap" id="period-filter-wrap">
+                <button class="filter-control button-control" id="period-trigger" type="button" aria-expanded="false">
+                  <span>Período</span><strong id="period-summary">01/09/2026 — 16/09/2026</strong><b>⌄</b>
+                </button>
+                <div class="popover date-popover" id="period-popover" hidden>
+                  <strong>Seleccionar período</strong>
+                  <div class="quick-periods" role="group" aria-label="Períodos rápidos">
+                    <button type="button" data-quick-period="today">Hoy</button><button type="button" data-quick-period="yesterday">Ayer</button>
+                    <button type="button" data-quick-period="last7">Últimos 7 días</button><button type="button" data-quick-period="last14">Últimos 14 días</button>
+                    <button type="button" data-quick-period="thisMonth">Este mes</button><button type="button" data-quick-period="lastMonth">El mes pasado</button>
+                  </div>
+                  <div class="custom-dates">
+                    <input id="date-start" aria-label="Fecha de inicio" type="date" value="2026-09-01" />
+                    <input id="date-end" aria-label="Fecha de fin" type="date" value="2026-09-16" />
+                  </div>
+                  <button class="apply-button" id="apply-period" type="button">Aplicar período</button>
+                </div>
+              </div>
+
+              <div class="popover-wrap" id="campaign-filter-wrap">
+                <button class="filter-control button-control" id="campaign-trigger" type="button" aria-expanded="false">
+                  <span>Campañas</span><strong id="campaign-summary">3 seleccionadas</strong><b>⌄</b>
+                </button>
+                <div class="popover campaign-popover" id="campaign-popover" hidden>
+                  <div class="popover-title"><strong>Seleccionar campañas</strong><span><button type="button" id="campaign-select-all">Seleccionar todo</button><button type="button" id="campaign-clear">Limpiar</button></span></div>
+                  <div id="campaign-options"></div>
+                </div>
+              </div>
+
+              <div class="popover-wrap hidden" id="network-filter-wrap">
+                <button class="filter-control button-control" id="network-trigger" type="button" aria-expanded="false">
+                  <span>Plataformas</span><strong id="network-summary">Instagram y Facebook</strong><b>⌄</b>
+                </button>
+                <div class="popover campaign-popover" id="network-popover" hidden>
+                  <div class="popover-title"><strong>Plataformas</strong><span><button type="button" id="network-select-all">Seleccionar todo</button><button type="button" id="network-clear">Limpiar</button></span></div>
+                  <div id="network-options"></div>
+                </div>
+              </div>
+
+              <div class="popover-wrap">
+                <button class="filter-control button-control" id="comparison-trigger" type="button" aria-expanded="false">
+                  <span>Comparación</span><strong id="comparison-summary">Período anterior</strong><b>⌄</b>
+                </button>
+                <div class="popover comparison-popover" id="comparison-popover" hidden>
+                  <strong>Comparar período</strong>
+                  <label><input type="radio" name="comparison" value="previous" checked /> Período anterior</label>
+                  <label><input type="radio" name="comparison" value="none" /> Sin comparación</label>
+                  <label><input type="radio" name="comparison" value="month" /> Mes anterior</label>
+                  <label><input type="radio" name="comparison" value="custom" /> Personalizado</label>
+                  <div class="custom-dates" id="custom-comparison">
+                    <input id="compare-start" type="date" value="2026-08-16" />
+                    <input id="compare-end" type="date" value="2026-08-31" />
+                  </div>
+                  <button class="apply-button" id="apply-comparison" type="button">Aplicar comparación</button>
+                </div>
+              </div>
+
+              <button class="filters-apply" id="apply-filters" type="button">APLICAR FILTROS</button>
+            </div>
+
+            <div class="objective-row" id="objective-row"><span>Objetivo</span><div id="objective-buttons" class="objective-buttons"></div></div>
+          </section>
+
+          <p class="data-state" id="data-state" role="status" hidden></p>
+          <section aria-labelledby="summary-title">
+            <div class="section-intro"><div><p class="eyebrow">RESUMEN</p><h2 id="summary-title">Indicadores principales</h2></div><p>Selecciona hasta dos tarjetas para compararlas.</p></div>
+            <div id="kpi-grid" class="kpi-grid"></div>
+          </section>
+
+          <section class="panel chart-panel" aria-labelledby="chart-title">
+            <div class="panel-heading">
+              <div><p class="eyebrow">EVOLUCIÓN</p><h2 id="chart-title">Evolución de Leads vs. CPL</h2></div>
+              <div class="granularity" role="group" aria-label="Agrupación temporal">
+                <button type="button" class="active" data-granularity="day">Días</button>
+                <button type="button" data-granularity="week">Semanas</button>
+                <button type="button" data-granularity="month">Meses</button>
+              </div>
+            </div>
+            <div id="series-controls" class="series-controls"></div>
+            <div class="chart-wrap">
+              <svg id="evolution-chart" role="img" aria-labelledby="chart-title chart-description"></svg>
+              <p id="chart-description" class="sr-only">Gráfico temporal de las métricas seleccionadas.</p>
+              <div id="chart-tooltip" class="chart-tooltip" hidden></div>
+            </div>
+          </section>
+
+          <section class="panel performance-panel" aria-labelledby="performance-title">
+            <div class="panel-heading">
+              <div><p class="eyebrow">DESGLOSE</p><h2 id="performance-title">Rendimiento por campaña</h2></div>
+              <div class="table-actions">
+                <div class="popover-wrap">
+                  <button class="secondary-action" id="columns-trigger" type="button" aria-expanded="false">Columnas</button>
+                  <div class="popover columns-popover" id="columns-popover" hidden><strong>Métricas de la tabla</strong><div id="column-options"></div></div>
+                </div>
+              </div>
+            </div>
+            <div class="table-scroll"><table><thead id="performance-head"></thead><tbody id="performance-body"></tbody></table></div>
+            <p class="table-help">La flecha junto al nombre despliega campaña → conjunto de anuncios → anuncio. La flecha de cada KPI abre sus columnas de comparación.</p>
+          </section>
+          <div id="additional-modules"></div>
+        </div>
+
+        <!-- ─────────────── Vista: reportes ─────────────── -->
+        <div class="dashboard view" id="view-reports" hidden>
+          <section class="page-heading">
+            <div><p class="eyebrow">EMISARIOS ARGENTINA</p><h1>Reportes</h1><p>Descargas de las vistas del panel, con los filtros que tengas aplicados.</p></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">DESCARGAS</p><h2>Generar un reporte</h2></div></div>
+            <div class="report-grid" id="report-grid"></div>
+          </section>
+        </div>
+
+        <!-- ─────────────── Vista: usuarios y accesos ─────────────── -->
+        <div class="dashboard view" id="view-users" hidden>
+          <section class="page-heading">
+            <div><p class="eyebrow">EMISARIOS ARGENTINA</p><h1>Usuarios y Accesos</h1></div>
+            <div class="heading-actions"><button class="primary-action" type="button" id="new-user">Nuevo usuario</button></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">ACCESOS</p><h2 id="users-count">0 usuarios</h2></div></div>
+            <div class="table-scroll">
+              <table class="module-table users-table">
+                <thead><tr><th>USUARIO</th><th>ROL</th><th>ALCANCE</th><th>ÚLTIMO ACCESO</th><th>ESTADO</th><th>ACCIONES</th></tr></thead>
+                <tbody id="users-body"></tbody>
+              </table>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">REFERENCIA</p><h2>Qué ve cada nivel</h2></div></div>
+            <div class="table-scroll">
+              <table class="module-table levels-table">
+                <thead><tr><th>NIVEL</th><th>CUENTAS</th><th>INVERSIÓN Y MÁRGENES</th><th>GESTIONAR ACCESOS</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>Administrador</strong><small>Ve todas las cuentas y decide quién entra al panel.</small></td><td>Todas</td><td>Sí</td><td>Sí</td></tr>
+                  <tr><td><strong>Especialista</strong><small>Perfil medio de Clidea: ve todas las cuentas, no toca los accesos.</small></td><td>Todas o algunas</td><td>Sí</td><td>No</td></tr>
+                  <tr><td><strong>Cliente</strong><small>Ve sólo las cuentas que tenga asignadas, con datos ya visibles.</small></td><td>Las asignadas</td><td>Sí</td><td>No</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="table-help">La columna de inversión dice sólo si ese nivel ve lo que se gastó en su cuenta. Lo que cambia de un nivel a otro es de cuántas cuentas se trata.</p>
+          </section>
+        </div>
+
+        <!-- ─────────────── Vista: alta de usuario ─────────────── -->
+        <div class="dashboard view" id="view-new-user" hidden>
+          <section class="page-heading">
+            <div><p class="eyebrow">EMISARIOS ARGENTINA</p><h1 id="new-user-title">Alta de Nuevo Usuario</h1></div>
+          </section>
+          <section class="panel">
+            <form id="user-form" class="user-form" novalidate>
+              <div class="form-grid">
+                <label>Nombre de usuario<input id="f-user" required placeholder="Nombre de Usuario" /></label>
+                <label>Nombre y Apellido<input id="f-name" required placeholder="Como se le llama" /></label>
+                <label>Correo (opcional)<input id="f-mail" type="email" placeholder="nombre@correo.com" /></label>
+                <label>Rol<select id="f-role"><option value="Administrador">Administrador</option><option value="Especialista">Especialista</option><option value="Cliente" selected>Cliente</option></select></label>
+              </div>
+              <p class="form-legend">Cuentas que puede ver</p>
+              <div class="accounts-matrix" id="accounts-matrix"></div>
+              <p class="form-error" id="form-error" hidden></p>
+              <div class="form-actions">
+                <button class="primary-action" type="submit" id="save-user">Crear y generar contraseña</button>
+                <button class="secondary-action" type="button" id="cancel-user">Cancelar</button>
+              </div>
+            </form>
+          </section>
+        </div>
+
+        <!-- ─────────────── Vista: mi perfil ─────────────── -->
+        <div class="dashboard view" id="view-profile" hidden>
+          <section class="profile-head">
+            <div class="profile-avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6" /><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0" /></svg></div>
+            <strong id="profile-name">Yan Arapé</strong>
+            <span id="profile-role">Especialista de Paid Media</span>
+          </section>
+          <section class="page-heading">
+            <div><p class="eyebrow">SEGURIDAD</p><h1>Cambiar la contraseña</h1></div>
+          </section>
+          <section class="panel">
+            <form id="profile-form" class="user-form" novalidate>
+              <div class="form-grid form-grid-3">
+                <label>Contraseña actual<input id="p-current" type="password" placeholder="••••••••" /></label>
+                <label>Nueva<input id="p-new" type="password" placeholder="Mínimo 12 caracteres" /></label>
+                <label>Repita la nueva<input id="p-repeat" type="password" placeholder="Repita la nueva contraseña" /></label>
+              </div>
+              <div class="form-actions">
+                <button class="primary-action" type="submit">Cambiar contraseña</button>
+              </div>
+              <p class="form-error" id="profile-error">Mínimo 12 caracteres.</p>
+            </form>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <dialog id="kpi-dialog" class="kpi-dialog">
+      <form method="dialog">
+        <div class="dialog-head"><strong>Agregar indicador</strong><button value="cancel" aria-label="Cerrar">×</button></div>
+        <div id="kpi-dialog-options"></div>
+      </form>
+    </dialog>
+
+    <dialog id="download-dialog" class="kpi-dialog download-dialog">
+      <div class="dialog-body">
+        <strong>Seleccionar período a Descargar</strong>
+        <div class="quick-periods" role="group" aria-label="Períodos rápidos de descarga">
+          <button type="button" data-download-period="today">Hoy</button><button type="button" data-download-period="yesterday">Ayer</button>
+          <button type="button" data-download-period="last7">Últimos 7 días</button><button type="button" data-download-period="last14">Últimos 14 días</button>
+          <button type="button" data-download-period="thisMonth">Este mes</button><button type="button" data-download-period="lastMonth">El mes pasado</button>
+          <button type="button" data-download-period="custom" class="active">Personalizado</button>
+        </div>
+        <div class="custom-dates">
+          <input id="download-start" type="date" aria-label="Desde" value="2026-09-01" />
+          <input id="download-end" type="date" aria-label="Hasta" value="2026-09-16" />
+        </div>
+        <button class="apply-button" id="download-confirm" type="button">DESCARGAR</button>
+        <button class="link-button" id="download-cancel" type="button">Cancelar</button>
+      </div>
+    </dialog>
+
+    <dialog id="password-dialog" class="kpi-dialog">
+      <div class="dialog-body center">
+        <span>Vas a cambiar la contraseña de</span>
+        <strong class="dialog-title" id="password-target">—</strong>
+        <label class="stack">Escriba la Nueva Contraseña<input id="np-1" type="password" /></label>
+        <label class="stack">Repita la contraseña para confirmar<input id="np-2" type="password" /></label>
+        <p class="form-error" id="password-error" hidden></p>
+        <button class="apply-button" id="password-confirm" type="button">CAMBIAR CONTRASEÑA</button>
+        <button class="link-button" id="password-cancel" type="button">Cancelar</button>
+      </div>
+    </dialog>
+
+    <dialog id="delete-dialog" class="kpi-dialog">
+      <div class="dialog-body center">
+        <p class="dialog-question">Confirme nuevamente si desea <em>Eliminar</em> a <span id="delete-target">este usuario</span>.</p>
+        <div class="dialog-buttons">
+          <button class="danger-action" id="delete-confirm" type="button">Eliminar</button>
+          <button class="neutral-action" id="delete-cancel" type="button">Cancelar</button>
+        </div>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div class="print-only print-header" id="print-header"></div>
+    <script src="./app-v2.js"></script>
+    <script src="./app-shell.js"></script>
+  </body>
+</html>
+<script async data-explicit-opt-in="true" data-deployment-id="dpl_HLgDsu1akXT13163pRjxx4eEhocQ" src="https://vercel.live/_next-live/feedback/feedback.js"></script>
