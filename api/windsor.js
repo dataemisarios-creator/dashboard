@@ -1,4 +1,4 @@
-import { exigirSesion } from './_comun.js';
+import { exigirSesion, permisosDe, puedeVer, usuarioDeSesion } from './_comun.js';
 import { buscarCuenta } from './_cuentas.js';
 
 const BASE = 'https://connectors.windsor.ai';
@@ -20,7 +20,8 @@ async function consultar(conector, params) {
 }
 
 export default async function handler(req, res) {
-  if (!exigirSesion(req, res)) return;
+  const sesion = exigirSesion(req, res);
+  if (!sesion) return;
   if (!process.env.WINDSOR_API_KEY)
     return res.status(500).json({ error: 'Falta configurar WINDSOR_API_KEY en el servidor.' });
 
@@ -31,40 +32,48 @@ export default async function handler(req, res) {
   const cuenta = buscarCuenta(String(cliente), String(plataforma));
   if (!cuenta) return res.status(404).json({ error: 'Esa cuenta no está conectada.' });
 
+  /* El permiso se comprueba acá, no sólo al armar el menú: si no, bastaría con
+     escribir la dirección a mano para leer la cuenta de otro anunciante. */
+  const permisos = permisosDe(await usuarioDeSesion(sesion));
+  if (!puedeVer(permisos, String(cliente), String(plataforma)))
+    return res.status(403).json({ error: 'Tu usuario no tiene acceso a esa cuenta.' });
+
   try {
     const comunes = { date_from: desde, date_to: hasta, fields: cuenta.campos };
-    const filas = cuenta.conector
-      ? (await consultar(cuenta.conector, comunes)).filter(
-          (f) => !cuenta.perfil || f.account_name === cuenta.perfil,
-        )
-      : await consultar('all', { ...comunes, select_accounts: cuenta.cuenta });
 
-    /* El alcance único no se suma por día: sumarlo lo infla. Va en una consulta
-       aparte, sin desglose, para que sea un solo valor del período. */
-    let alcance = null;
-    if (cuenta.alcance) {
-      const sueltas = await consultar('all', {
-        date_from: desde,
-        date_to: hasta,
-        select_accounts: cuenta.cuenta,
-        fields: cuenta.alcance,
-      });
-      const suma = sueltas.reduce(
-        (acc, f) => ({
-          reach: acc.reach + (Number(f.reach) || 0),
-          impressions: acc.impressions + (Number(f.impressions) || 0),
-        }),
-        { reach: 0, impressions: 0 },
-      );
-      alcance = suma.reach || null;
-    }
+    /* Las tres consultas van en paralelo: encadenadas, una vista tardaba más de
+       diez segundos. */
+    const pedirFilas = cuenta.conector
+      ? consultar(cuenta.conector, comunes).then((f) =>
+          f.filter((x) => !cuenta.perfil || x.account_name === cuenta.perfil))
+      : consultar('all', { ...comunes, select_accounts: cuenta.cuenta });
+
+    /* Desglose por conjunto y por anuncio: consulta aparte y sin fecha, porque
+       al nivel de anuncio las filas se multiplican y la serie diaria no las
+       necesita. */
+    const pedirDesglose = cuenta.desglose
+      ? consultar('all', { date_from: desde, date_to: hasta, select_accounts: cuenta.cuenta, fields: cuenta.desglose })
+          .catch(() => [])
+      : Promise.resolve([]);
+
+    /* El alcance único no se suma por día: sumarlo lo infla. Va sin desglose
+       para que sea un solo valor del período. */
+    const pedirAlcance = cuenta.alcance
+      ? consultar('all', { date_from: desde, date_to: hasta, select_accounts: cuenta.cuenta, fields: cuenta.alcance })
+          .catch(() => [])
+      : Promise.resolve([]);
+
+    const [filas, desglose, sueltas] = await Promise.all([pedirFilas, pedirDesglose, pedirAlcance]);
+    const alcance = sueltas.reduce((acc, f) => acc + (Number(f.reach) || 0), 0) || null;
 
     res.setHeader('Cache-Control', 'private, max-age=0, no-store');
     return res.status(200).json({
-      cuenta: { id: cuenta.id, titulo: cuenta.titulo, moneda: cuenta.moneda || null, grupo: cuenta.grupo },
+      cuenta: { id: cuenta.id, tipo: cuenta.tipo, titulo: cuenta.titulo, moneda: cuenta.moneda || null, grupo: cuenta.grupo },
       desde,
       hasta,
       alcance,
+      niveles: cuenta.niveles || [],
+      desglose,
       filas,
       consultadoEn: new Date().toISOString(),
     });

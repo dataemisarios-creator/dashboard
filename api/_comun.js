@@ -175,5 +175,25 @@ export async function guardarUsuarios(lista) {
   });
 }
 
+/* ────────────────────────────────────────────────────────── permisos */
+
+/* El acceso se da por cuenta y por plataforma: cada usuario guarda una lista de
+   claves «cliente-cuenta». El perfil de administrador ve todo lo conectado.
+   Los permisos se releen del almacén en cada pedido y no salen de la cookie:
+   quitarle una cuenta a alguien tiene efecto sin esperar a que cierre sesión. */
+export async function usuarioDeSesion(sesion) {
+  const usuarios = await leerUsuarios();
+  return usuarios.find((u) => u.id === sesion.id) || null;
+}
+
+export function permisosDe(usuario) {
+  if (!usuario || usuario.activo === false) return new Set();
+  if (usuario.rol === 'Administrador') return 'todas';
+  return new Set(Array.isArray(usuario.cuentas) ? usuario.cuentas : []);
+}
+
+export const puedeVer = (permisos, cliente, cuenta) =>
+  permisos === 'todas' || permisos.has(`${cliente}-${cuenta}`);
+
 /** Lo que se le manda al navegador: nunca el hash. */
 export const sinHash = ({ hash, ...resto }) => resto;

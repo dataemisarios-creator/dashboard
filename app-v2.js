@@ -1,4 +1,4 @@
-const COLORS = ["#8752e8", "#000000"];
+const COLORS = ["#9966ff", "#161616"];
 
 const metricDefs = {
   spend: ["Inversión", "currency"], impressions: ["Impresiones", "number"], cpm: ["CPM", "currency"], reach: ["Alcance", "number"], frequency: ["Frecuencia", "decimal"],
@@ -45,7 +45,7 @@ const platforms = {
 };
 
 const state = {
-  platform: "meta", objective: "leads", start: "2026-09-01", end: "2026-09-16", comparison: "previous", granularity: "day",
+  platform: "meta", objective: "leads", rapido: "thisMonth", start: "", end: "", comparison: "previous", granularity: "day",
   selectedCampaigns: new Set(["meta-1","meta-2","meta-3"]), selectedMetrics: ["conversions","cpa"], chartTypes: { conversions: "bar", cpa: "line" },
   customKpis: { meta: [], google: [], tiktok: [], instagram: [], tiktokOrganic: [] },
   networks: new Set(["instagram","facebook"]),
@@ -75,8 +75,14 @@ const OBJETIVOS_GOOGLE = { SEARCH:"Búsqueda", VIDEO:"Video", DISPLAY:"Display",
 
 const DATOS = {
   cliente: "geely",
+  nombreCliente: "",
+  cuentasCliente: [],
+  tipo: "meta",
   filas: [],
   filasComparacion: [],
+  desglose: [],
+  desgloseComparacion: [],
+  niveles: [],
   alcance: null,
   alcanceComparacion: null,
   moneda: null,
@@ -125,12 +131,12 @@ const filasElegidas = (filas) =>
 function totalesActuales() {
   // El alcance único es de toda la cuenta: con un filtro de campaña no aplica.
   const todas = state.selectedCampaigns.size === DATOS.campanias.length;
-  return totalizar(state.platform, filasElegidas(DATOS.filas), todas ? DATOS.alcance : null);
+  return totalizar(DATOS.tipo, filasElegidas(DATOS.filas), todas ? DATOS.alcance : null);
 }
 function totalesComparacion() {
   if (state.comparison === "none" || !DATOS.filasComparacion.length) return null;
   const todas = state.selectedCampaigns.size === DATOS.campanias.length;
-  return totalizar(state.platform, filasElegidas(DATOS.filasComparacion), todas ? DATOS.alcanceComparacion : null);
+  return totalizar(DATOS.tipo, filasElegidas(DATOS.filasComparacion), todas ? DATOS.alcanceComparacion : null);
 }
 
 /** Rango del período de comparación, con la misma regla que el selector. */
@@ -165,30 +171,31 @@ async function cargarDatos() {
   DATOS.error = null;
   pintarEstadoDatos();
   try {
-    const actual = await pedir(state.platform, state.start, state.end);
+    /* El período pedido y el de comparación se consultan a la vez: uno detrás
+       del otro duplicaba la espera. */
+    const conComparacion = state.comparison !== "none";
+    const [actual, previo] = await Promise.all([
+      pedir(state.platform, state.start, state.end),
+      conComparacion ? pedir(state.platform, ...rangoComparacion()).catch(() => null) : Promise.resolve(null),
+    ]);
     if (!vigente()) return;
+
     DATOS.filas = actual.filas || [];
+    DATOS.desglose = actual.desglose || [];
+    DATOS.niveles = actual.niveles || [];
     DATOS.alcance = actual.alcance;
     DATOS.moneda = actual.cuenta?.moneda || null;
     DATOS.consultadoEn = actual.consultadoEn;
 
-    DATOS.filasComparacion = [];
-    DATOS.alcanceComparacion = null;
-    if (state.comparison !== "none") {
-      const [desde, hasta] = rangoComparacion();
-      try {
-        const previo = await pedir(state.platform, desde, hasta);
-        if (!vigente()) return;
-        DATOS.filasComparacion = previo.filas || [];
-        DATOS.alcanceComparacion = previo.alcance;
-      } catch (e) { /* sin comparación: la vista lo muestra como «—» */ }
-    }
+    DATOS.filasComparacion = previo ? previo.filas || [] : [];
+    DATOS.desgloseComparacion = previo ? previo.desglose || [] : [];
+    DATOS.alcanceComparacion = previo ? previo.alcance : null;
 
     // Las campañas y los objetivos salen de lo que devolvió la cuenta.
     const vistas = new Map();
     for (const f of DATOS.filas) {
       if (!f.campaign) continue;
-      if (!vistas.has(f.campaign)) vistas.set(f.campaign, objetivoDeFila(state.platform, f));
+      if (!vistas.has(f.campaign)) vistas.set(f.campaign, objetivoDeFila(DATOS.tipo, f));
     }
     DATOS.campanias = [...vistas.entries()].map(([nombre, objetivo]) => [nombre, nombre, objetivo]);
     DATOS.objetivos = {};
@@ -239,39 +246,72 @@ function fmt(metric, value) {
   return new Intl.NumberFormat("es-AR", { maximumFractionDigits:0 }).format(value);
 }
 function metricLabel(metric) { return metricDefs[metric]?.[0] || metric; }
-function currentPlatform() { return platforms[state.platform]; }
+function currentPlatform() { return platforms[DATOS.tipo] || platforms.meta; }
+function tipoDe(cuentaId){ const c=(DATOS.cuentasCliente||[]).find(x=>x.id===cuentaId); return c ? c.tipo : "meta"; }
 function hayComparacion(){ return state.comparison !== "none" && !!DATOS.filasComparacion.length; }
 /* Variación real de cada indicador contra el período de comparación. */
 function deltaFor(metric){ const c=totalesComparacion(); if(!c) return null; const previo=c[metric]; if(!previo) return null; return (totalesActuales()[metric]/previo-1)*100; }
-function currentMetrics() { const p=currentPlatform(); const base=(p.defaults[state.objective]||p.metrics).slice(0,6); return [...base, ...state.customKpis[state.platform]]; }
+function currentMetrics() { const p=currentPlatform(); const base=(p.defaults[state.objective]||p.metrics).slice(0,6); return [...base, ...state.customKpis[DATOS.tipo]]; }
 /* El valor de un indicador sale de los totales reales del período. `filas`
    permite pedir los de una campaña concreta para la tabla. */
 function valueFor(metric, filas) {
-  const totales = filas ? totalizar(state.platform, filas, null) : totalesActuales();
+  const totales = filas ? totalizar(DATOS.tipo, filas, null) : totalesActuales();
   return totales[metric] ?? 0;
 }
 function toISO(date){return date.toISOString().slice(0,10)}
 function dateText(value){return new Intl.DateTimeFormat("es-AR",{day:"2-digit",month:"2-digit",year:"numeric"}).format(new Date(`${value}T12:00:00`))}
 function syncPeriodControls(){document.querySelector("#date-start").value=state.start;document.querySelector("#date-end").value=state.end;document.querySelector("#period-summary").textContent=`${dateText(state.start)} — ${dateText(state.end)}`}
 function syncComparisonDates(mode){const start=new Date(`${state.start}T12:00:00`),end=new Date(`${state.end}T12:00:00`);let cs,ce;if(mode==="previous"){const days=Math.round((end-start)/86400000)+1;ce=new Date(start);ce.setDate(ce.getDate()-1);cs=new Date(ce);cs.setDate(cs.getDate()-days+1)}else if(mode==="month"){cs=new Date(start);ce=new Date(end);cs.setMonth(cs.getMonth()-1);ce.setMonth(ce.getMonth()-1)}else return;document.querySelector("#compare-start").value=toISO(cs);document.querySelector("#compare-end").value=toISO(ce)}
+/* «Hoy» y «ayer» son un día puntual y «el mes pasado» está cerrado: en esos
+   tres la casilla de incluir hoy no cambia nada, así que se oculta. */
+const RAPIDOS_CON_HOY = new Set(["last7", "last14", "thisMonth"]);
+
+function incluyeHoy(){ const c=document.querySelector("#include-today"); return !c || c.checked; }
+
+/** Rango de un período rápido, contado siempre desde el día de hoy. */
+function rangoRapido(clave, conHoy = incluyeHoy()){
+  const hoy=new Date();
+  const fin=new Date(hoy), inicio=new Date(hoy);
+  if(clave==="today"){ /* un solo día: hoy */ }
+  else if(clave==="yesterday"){ inicio.setDate(inicio.getDate()-1); fin.setDate(fin.getDate()-1); }
+  else {
+    if(!conHoy) fin.setDate(fin.getDate()-1);
+    if(clave==="last7"){ inicio.setTime(fin.getTime()); inicio.setDate(inicio.getDate()-6); }
+    else if(clave==="last14"){ inicio.setTime(fin.getTime()); inicio.setDate(inicio.getDate()-13); }
+    else if(clave==="thisMonth"){ inicio.setTime(fin.getTime()); inicio.setDate(1); }
+    else if(clave==="lastMonth"){ fin.setTime(hoy.getTime()); fin.setDate(0); inicio.setTime(fin.getTime()); inicio.setDate(1); }
+  }
+  return [toISO(inicio), toISO(fin)];
+}
+
+function aplicarRapido(clave){
+  state.rapido=clave;
+  [state.start,state.end]=rangoRapido(clave);
+  document.querySelectorAll("[data-quick-period]").forEach(x=>x.classList.toggle("active",x.dataset.quickPeriod===clave));
+  document.querySelector("#include-today-wrap").classList.toggle("hidden",!RAPIDOS_CON_HOY.has(clave));
+  syncPeriodControls();
+  applyPeriod();
+}
+
 function applyPeriod(){state.start=document.querySelector("#date-start").value;state.end=document.querySelector("#date-end").value;syncPeriodControls();syncComparisonDates(document.querySelector('input[name="comparison"]:checked').value);document.querySelector("#period-popover").hidden=true;marcarFiltrosPendientes()}
 
 function setPlatform(id) {
   state.platform=id;
+  DATOS.tipo=tipoDe(id);
   const p=currentPlatform();
   state.objective="";
   state.selectedCampaigns=new Set();
   state.selectedMetrics=(p.defaults[Object.keys(p.defaults)[0]]||p.metrics).slice(0,2);
   state.chartTypes[state.selectedMetrics[0]]="bar"; state.chartTypes[state.selectedMetrics[1]]="line";
-  state.expandedMetrics=new Set(state.tableMetrics[id]);
+  state.expandedMetrics=new Set(state.tableMetrics[DATOS.tipo]||[]);
   cargarDatos();
 }
 
 function renderPlatformHeader() {
-  const p=currentPlatform(); document.querySelector("#platform-title").textContent=p.title; { const e=document.querySelector("#platform-eyebrow"); if(e) e.textContent=`${(DATOS.nombreCliente||"").toUpperCase()} · PERFORMANCE`.replace(/^ · /,""); } if(window.PanelEmisarios) window.PanelEmisarios.rutaDelPanel(); document.querySelector("#platform-description").textContent=p.description;
+  const p=currentPlatform(); const cuenta=(DATOS.cuentasCliente||[]).find(x=>x.id===state.platform); document.querySelector("#platform-title").textContent=cuenta?cuenta.titulo:p.title; { const e=document.querySelector("#platform-eyebrow"); if(e) e.textContent=`${(DATOS.nombreCliente||"").toUpperCase()} · PERFORMANCE`.replace(/^ · /,""); } if(window.PanelEmisarios) window.PanelEmisarios.rutaDelPanel(); document.querySelector("#platform-description").textContent=p.description;
   document.querySelectorAll("[data-platform]").forEach(b=>b.classList.toggle("active",b.dataset.platform===state.platform));
   document.querySelector("#campaign-filter-wrap").classList.toggle("hidden",!p.paid); document.querySelector("#objective-row").classList.toggle("hidden",!p.paid); document.querySelector(".performance-panel").classList.toggle("hidden",!p.paid);
-  document.querySelector("#network-filter-wrap").classList.toggle("hidden",state.platform!=="instagram");
+  document.querySelector("#network-filter-wrap").classList.toggle("hidden",DATOS.tipo!=="instagram");
 }
 
 function renderObjectives() {
@@ -300,10 +340,10 @@ function renderKpis() {
     const delta=deltaFor(metric);
     const signo=delta===null?"":delta>=0?"↑":"↓";
     const clase=delta===null?"":delta>=0?"positive":"negative";
-    const removable=state.customKpis[state.platform].includes(metric);
+    const removable=state.customKpis[DATOS.tipo].includes(metric);
     return `<button class="kpi-card ${idx>=0?"selected":""}" data-metric="${metric}" data-order="${idx>=0?idx+1:""}" style="--series-color:${COLORS[Math.max(0,idx)]}"><span class="kpi-label">${metricLabel(metric)}</span><div class="kpi-value">${fmt(metric,valueFor(metric))}</div>${delta===null?"":`<span class="kpi-delta ${clase}">${signo} ${Math.abs(delta).toFixed(1).replace(".",",")}% vs. comparación</span>`}${removable?`<span class="kpi-remove" data-remove="${metric}">Quitar</span>`:""}</button>`;
   }).join("");
-  const empty=3-state.customKpis[state.platform].length; for(let i=0;i<empty;i++) html+=`<button class="kpi-add" type="button">+<span>Agregar KPI</span></button>`; grid.innerHTML=html;
+  const empty=3-state.customKpis[DATOS.tipo].length; for(let i=0;i<empty;i++) html+=`<button class="kpi-add" type="button">+<span>Agregar KPI</span></button>`; grid.innerHTML=html;
   grid.querySelectorAll(".kpi-card").forEach(card=>card.onclick=e=>{ if(e.target.dataset.remove){removeCustom(e.target.dataset.remove);return} toggleChartMetric(card.dataset.metric); });
   grid.querySelectorAll(".kpi-add").forEach(b=>b.onclick=openKpiDialog);
 }
@@ -311,9 +351,9 @@ function renderKpis() {
 function openKpiDialog() {
   const p=currentPlatform(); const shown=currentMetrics(); const choices=p.metrics.filter(m=>!shown.includes(m));
   document.querySelector("#kpi-dialog-options").innerHTML=choices.length?choices.map(m=>`<button type="button" class="kpi-choice" data-add-kpi="${m}">${metricLabel(m)}<span>+</span></button>`).join(""):`<p>Ya se muestran todos los KPI disponibles.</p>`;
-  document.querySelectorAll("[data-add-kpi]").forEach(b=>b.onclick=()=>{ if(state.customKpis[state.platform].length<3)state.customKpis[state.platform].push(b.dataset.addKpi); document.querySelector("#kpi-dialog").close(); renderKpis(); }); document.querySelector("#kpi-dialog").showModal();
+  document.querySelectorAll("[data-add-kpi]").forEach(b=>b.onclick=()=>{ if(state.customKpis[DATOS.tipo].length<3)state.customKpis[DATOS.tipo].push(b.dataset.addKpi); document.querySelector("#kpi-dialog").close(); renderKpis(); }); document.querySelector("#kpi-dialog").showModal();
 }
-function removeCustom(metric){ state.customKpis[state.platform]=state.customKpis[state.platform].filter(m=>m!==metric); state.selectedMetrics=state.selectedMetrics.filter(m=>m!==metric); if(!state.selectedMetrics.length)state.selectedMetrics=[currentPlatform().defaults[state.objective][0]]; renderKpis();renderChart(); }
+function removeCustom(metric){ state.customKpis[DATOS.tipo]=state.customKpis[DATOS.tipo].filter(m=>m!==metric); state.selectedMetrics=state.selectedMetrics.filter(m=>m!==metric); if(!state.selectedMetrics.length)state.selectedMetrics=[currentPlatform().defaults[state.objective][0]]; renderKpis();renderChart(); }
 function toggleChartMetric(metric){ const i=state.selectedMetrics.indexOf(metric); if(i>=0&&state.selectedMetrics.length>1)state.selectedMetrics.splice(i,1); else if(i<0){if(state.selectedMetrics.length===2)state.selectedMetrics.shift();state.selectedMetrics.push(metric);if(!state.chartTypes[metric])state.chartTypes[metric]="line"} renderKpis();renderChart(); }
 
 /* La serie sale de las filas por fecha. Con granularidad semanal o mensual se
@@ -372,36 +412,87 @@ function renderChart(){
   svg.onpointerleave=()=>tooltip.hidden=true;
 }
 
-function renderColumnOptions(){ const p=currentPlatform(); const selected=state.tableMetrics[state.platform]; document.querySelector("#column-options").innerHTML=`<label class="column-option"><input id="select-all-columns" type="checkbox" ${selected.length===p.metrics.length?"checked":""}> Seleccionar todos</label>`+p.metrics.map(m=>`<label class="column-option"><input type="checkbox" data-column="${m}" ${selected.includes(m)?"checked":""}> ${metricLabel(m)}</label>`).join(""); document.querySelector("#select-all-columns").onchange=e=>{state.tableMetrics[state.platform]=e.target.checked?[...p.metrics]:[];renderColumnOptions();renderTable()};document.querySelectorAll("[data-column]").forEach(i=>i.onchange=()=>{const list=state.tableMetrics[state.platform];i.checked?list.push(i.dataset.column):state.tableMetrics[state.platform]=list.filter(m=>m!==i.dataset.column);renderTable()}); }
+function renderColumnOptions(){ const p=currentPlatform(); const selected=state.tableMetrics[DATOS.tipo]; document.querySelector("#column-options").innerHTML=`<label class="column-option"><input id="select-all-columns" type="checkbox" ${selected.length===p.metrics.length?"checked":""}> Seleccionar todos</label>`+p.metrics.map(m=>`<label class="column-option"><input type="checkbox" data-column="${m}" ${selected.includes(m)?"checked":""}> ${metricLabel(m)}</label>`).join(""); document.querySelector("#select-all-columns").onchange=e=>{state.tableMetrics[DATOS.tipo]=e.target.checked?[...p.metrics]:[];renderColumnOptions();renderTable()};document.querySelectorAll("[data-column]").forEach(i=>i.onchange=()=>{const list=state.tableMetrics[DATOS.tipo];i.checked?list.push(i.dataset.column):state.tableMetrics[DATOS.tipo]=list.filter(m=>m!==i.dataset.column);renderTable()}); }
+
+/* Etiqueta de una fila del desglose. Google devuelve el anuncio como id, no
+   como nombre: se muestra como tal en vez de dejar la celda vacía. */
+function nombreDeNivel(campo, valor){
+  if(valor===null||valor===undefined||valor==="") return "Sin nombre";
+  if(campo==="ad_id") return `Anuncio ${valor}`;
+  return String(valor);
+}
+const TITULO_NIVEL = { adset_name:"Conjunto", ad_group_name:"Grupo de anuncios", ad_name:"Anuncio", ad_id:"Anuncio" };
+/* TikTok sólo baja hasta el anuncio: la fila se pinta como tal, no como conjunto. */
+const CLASE_NIVEL = (campo) => (campo === "ad_name" || campo === "ad_id" ? "ad" : "adset");
+
+/** Filas del desglose que cuelgan de una campaña y, opcionalmente, de un nivel. */
+function ramaDe(filas, campania, niveles, valores){
+  return filas.filter((f) => f.campaign===campania && valores.every((v,i)=>String(f[niveles[i]]??"")===v));
+}
 
 function renderTable(){
-  const metrics=state.tableMetrics[state.platform];
+  const metrics=state.tableMetrics[DATOS.tipo];
   const head=document.querySelector("#performance-head"), body=document.querySelector("#performance-body");
   const hay=hayComparacion();
-  let h1=`<tr><th rowspan="2">Campaña</th>`,h2=`<tr class="subhead">`;
+  const niveles=DATOS.niveles||[];
+  const titulo=["Campaña",...niveles.map(n=>TITULO_NIVEL[n]||n)].join(" / ").toLowerCase().replace(/^c/,"C");
+  let h1=`<tr><th rowspan="2">${titulo}</th>`,h2=`<tr class="subhead">`;
   metrics.forEach(m=>{const open=hay&&state.expandedMetrics.has(m);h1+=`<th class="metric-group" colspan="${open?3:1}">${metricLabel(m)} ${hay?`<button class="metric-toggle" data-expand-metric="${m}">${open?"←":"→"}</button>`:""}</th>`;h2+=`<th>Actual</th>${open?"<th>Comparación</th><th>Cambio</th>":""}`});
   head.innerHTML=`${h1}</tr>${h2}</tr>`;
   document.querySelectorAll("[data-expand-metric]").forEach(b=>b.onclick=()=>{state.expandedMetrics.has(b.dataset.expandMetric)?state.expandedMetrics.delete(b.dataset.expandMetric):state.expandedMetrics.add(b.dataset.expandMetric);renderTable()});
 
   const elegidas=DATOS.campanias.filter(c=>state.selectedCampaigns.has(c[0]));
   if(!elegidas.length){ body.innerHTML=`<tr><td colspan="${metrics.length+1}">Sin campañas en este período.</td></tr>`; return; }
-  const porCampania=(lista,nombre)=>lista.filter(f=>f.campaign===nombre);
 
-  body.innerHTML=elegidas.map(c=>{
-    const filas=porCampania(DATOS.filas,c[0]);
-    const previas=porCampania(DATOS.filasComparacion,c[0]);
-    let celdas=`<td>${c[1]}</td>`;
+  /* La tabla baja de campaña a conjunto y de conjunto a anuncio. Los totales de
+     la campaña salen de la consulta por fecha, para que coincidan con los
+     indicadores de arriba; los niveles de abajo, del desglose. */
+  const filasTabla=[];
+  for(const c of elegidas){
+    const nombre=c[0];
+    const clave=`camp::${nombre}`;
+    filasTabla.push({ clave, etiqueta:c[1], nivel:"campaign", sangria:0,
+      actuales:DATOS.filas.filter(f=>f.campaign===nombre),
+      previas:DATOS.filasComparacion.filter(f=>f.campaign===nombre),
+      desplegable:niveles.length>0 });
+    if(!niveles.length || !state.expandedRows.has(clave)) continue;
+
+    const primeros=[...new Set(ramaDe(DATOS.desglose,nombre,niveles,[]).map(f=>String(f[niveles[0]]??"")))];
+    for(const valor of primeros){
+      const claveNivel=`${clave}::${valor}`;
+      filasTabla.push({ clave:claveNivel, etiqueta:nombreDeNivel(niveles[0],valor), nivel:CLASE_NIVEL(niveles[0]), sangria:1,
+        actuales:ramaDe(DATOS.desglose,nombre,niveles,[valor]),
+        previas:ramaDe(DATOS.desgloseComparacion,nombre,niveles,[valor]),
+        desplegable:niveles.length>1 });
+      if(niveles.length<2 || !state.expandedRows.has(claveNivel)) continue;
+
+      const segundos=[...new Set(ramaDe(DATOS.desglose,nombre,niveles,[valor]).map(f=>String(f[niveles[1]]??"")))];
+      for(const hoja of segundos){
+        filasTabla.push({ clave:`${claveNivel}::${hoja}`, etiqueta:nombreDeNivel(niveles[1],hoja), nivel:"ad", sangria:2,
+          actuales:ramaDe(DATOS.desglose,nombre,niveles,[valor,hoja]),
+          previas:ramaDe(DATOS.desgloseComparacion,nombre,niveles,[valor,hoja]),
+          desplegable:false });
+      }
+    }
+  }
+
+  body.innerHTML=filasTabla.map(fila=>{
+    const nombre=fila.desplegable
+      ? `<button class="row-toggle" data-row="${fila.clave}">${state.expandedRows.has(fila.clave)?"⌄":"›"} ${fila.etiqueta}</button>`
+      : fila.etiqueta;
+    let celdas=`<td style="padding-left:${12+fila.sangria*18}px">${nombre}</td>`;
     metrics.forEach(m=>{
-      const v=valueFor(m,filas);
+      const v=valueFor(m,fila.actuales);
       celdas+=`<td>${fmt(m,v)}</td>`;
       if(hay&&state.expandedMetrics.has(m)){
-        const previo=valueFor(m,previas);
+        const previo=valueFor(m,fila.previas);
         const cambio=previo?(v/previo-1)*100:null;
         celdas+=`<td>${fmt(m,previo)}</td><td class="${cambio===null?"":cambio>=0?"positive":"negative"}">${cambio===null?"—":`${cambio>=0?"+":"−"}${Math.abs(cambio).toFixed(1).replace(".",",")}%`}</td>`;
       }
     });
-    return `<tr class="level-campaign">${celdas}</tr>`;
+    return `<tr class="level-${fila.nivel}">${celdas}</tr>`;
   }).join("");
+  document.querySelectorAll("[data-row]").forEach(b=>b.onclick=()=>{state.expandedRows.has(b.dataset.row)?state.expandedRows.delete(b.dataset.row):state.expandedRows.add(b.dataset.row);renderTable()});
 }
 function moduleTable(title,first,metrics,rows){return `<section class="panel"><div class="panel-heading"><div><p class="eyebrow">GOOGLE ADS</p><h2>${title}</h2></div></div><div class="table-scroll"><table class="module-table"><thead><tr><th>${first}</th>${metrics.map(m=>`<th>${m}</th>`).join("")}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((v,i)=>`<td>${v}</td>`).join("")}</tr>`).join("")}</tbody></table></div></section>`}
 function renderAdditionalModules(){
@@ -414,7 +505,7 @@ function renderAdditionalModules(){
     instagram:"El perfil conectado es el público de Instagram: informa seguidores y publicaciones. El alcance, las interacciones y el contenido necesitan la cuenta de Instagram Insights conectada en Windsor.",
     tiktokOrganic:"TikTok orgánico todavía no está conectado en Windsor.",
   };
-  const texto=pendientes[state.platform];
+  const texto=pendientes[DATOS.tipo];
   root.innerHTML=texto?`<section class="panel"><p class="eyebrow">PENDIENTE DE CONEXIÓN</p><p class="form-note">${texto}</p></section>`:"";
 }
 function renderReelsTable(){const reels=[["Reel lanzamiento","1 sep 2026","12.400","4,8%","18.200","310","1.540","48"],["Test drive","6 sep 2026","10.900","5,2%","15.600","280","1.320","39"],["Detalle interior","12 sep 2026","8.700","4,1%","11.900","190","980","27"]];const labels=["Contenido","Fecha","Alcance","Engagement","Visualizaciones","Guardados","Me gusta","Comentarios"];return `<section class="panel"><p class="eyebrow">CONTENIDO</p><h2>Reels publicados</h2><div class="table-scroll"><table class="module-table reels-table"><tbody><tr><th>Vista previa</th>${reels.map(()=>`<td><div class="placeholder-media">Sin imagen</div></td>`).join("")}</tr>${labels.map((l,i)=>`<tr><th>${l}</th>${reels.map(r=>`<td>${r[i]}</td>`).join("")}</tr>`).join("")}</tbody></table></div></section>`}
@@ -430,13 +521,28 @@ document.querySelector("#campaign-clear").onclick=()=>{state.selectedCampaigns.c
 document.querySelectorAll('input[name="comparison"]').forEach(i=>{const sync=e=>{if(e.target.value!=="custom")syncComparisonDates(e.target.value)};i.onchange=sync;i.onclick=sync});
 document.querySelector("#apply-comparison").onclick=()=>{const input=document.querySelector('input[name="comparison"]:checked');state.comparison=input.value;document.querySelector("#comparison-summary").textContent=input.parentElement.textContent.trim();document.querySelector("#comparison-popover").hidden=true;marcarFiltrosPendientes()};
 document.querySelectorAll("[data-granularity]").forEach(b=>b.onclick=()=>{state.granularity=b.dataset.granularity;document.querySelectorAll("[data-granularity]").forEach(x=>x.classList.toggle("active",x===b));renderChart()});
-document.querySelectorAll("[data-quick-period]").forEach(b=>b.onclick=()=>{const end=new Date(`${state.end}T12:00:00`),start=new Date(end);if(b.dataset.quickPeriod==="today"){}else if(b.dataset.quickPeriod==="yesterday"){start.setDate(start.getDate()-1);end.setDate(end.getDate()-1)}else if(b.dataset.quickPeriod==="last7")start.setDate(start.getDate()-6);else if(b.dataset.quickPeriod==="last14")start.setDate(start.getDate()-13);else if(b.dataset.quickPeriod==="thisMonth")start.setDate(1);else {end.setDate(0);start.setTime(end.getTime());start.setDate(1)}state.start=toISO(start);state.end=toISO(end);syncPeriodControls();applyPeriod()});
-document.querySelector("#apply-period").onclick=applyPeriod;
+document.querySelectorAll("[data-quick-period]").forEach(b=>b.onclick=()=>{ aplicarRapido(b.dataset.quickPeriod); });
+/* Marcar o desmarcar «Incluir hoy» vuelve a calcular el último período rápido
+   elegido: es lo que se está preguntando, si el rango llega a hoy o cierra ayer. */
+document.querySelector("#include-today").onchange=()=>{ if(state.rapido) aplicarRapido(state.rapido); };
+document.querySelector("#apply-period").onclick=()=>{
+  state.rapido=null;
+  document.querySelectorAll("[data-quick-period]").forEach(x=>x.classList.remove("active"));
+  document.querySelector("#include-today-wrap").classList.add("hidden");
+  applyPeriod();
+};
+/* El panel abre con el mes en curso hasta hoy. */
+aplicarRapido("thisMonth");
 window.onresize=()=>{clearTimeout(window.chartTimer);window.chartTimer=setTimeout(renderChart,100)};
 window.DatosEmisarios = {
   cargar: cargarDatos,
   /* Volver a pedir sólo cuando cambió el período o la comparación; si sólo se
      tocaron campañas u objetivos alcanza con repintar lo que ya está. */
   aplicarFiltros: () => cargarDatos(),
-  elegirCliente: (id, nombre) => { DATOS.cliente = id; DATOS.nombreCliente = nombre || id; cargarDatos(); },
+  elegirCliente: (cliente, primera) => {
+    DATOS.cliente = cliente.id;
+    DATOS.nombreCliente = cliente.nombre;
+    DATOS.cuentasCliente = cliente.cuentas;
+    if (primera) setPlatform(primera.id); else cargarDatos();
+  },
 };

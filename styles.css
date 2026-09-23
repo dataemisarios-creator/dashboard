@@ -329,3 +329,97 @@ body.sin-sesion .app-shell { display: none; }
 .campaign-empty, .form-note { margin: 0; padding: 4px 2px; color: var(--muted-ink); font-size: 13px; }
 .kpi-delta.negative { color: var(--danger); }
 td.negative { color: var(--danger); }
+
+/* Selector de cliente desplegable dentro del panel lateral. */
+.client-wrap { position: relative; }
+.client-list[hidden] { display: none; }
+.client-list { display: grid; gap: 2px; margin-top: 6px; padding: 6px; border-radius: 12px; background: rgba(255, 255, 255, .08); }
+.client-option { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: center; width: 100%; padding: 7px 8px; border: 0; border-radius: 9px; background: transparent; color: inherit; font-size: 13px; text-align: left; }
+.client-option:hover, .client-option[aria-pressed="true"] { background: rgba(255, 255, 255, .14); }
+.client-option small { display: block; color: #cdb8ff; font-size: 11px; }
+.client-option .client-avatar { width: 30px; height: 30px; font-size: 11px; }
+.app-shell.collapsed .sidebar:not(.expanded) .client-list { display: none; }
+.nav-vacio { margin: 18px 8px; color: #cdb8ff; font-size: 12px; line-height: 1.5; }
+
+/* «Incluir hoy»: deja elegir entre el día cerrado de ayer o el día en curso. */
+.include-today { display: grid; grid-template-columns: 18px 1fr; gap: 6px 8px; align-items: center; margin: 10px 0 4px; font-size: 13px; }
+.include-today small { grid-column: 2; color: var(--em-muted-ink); font-size: 11px; }
+.include-today.hidden { display: none; }
+
+/* ── Paleta de marca de Emisarios ────────────────────────────────────────
+   Negro #161616, violeta eléctrico #9966ff, lila #e1d7ff, blanco y violeta
+   oscuro #331d75. Los grises del panel están corridos al mismo tono violeta
+   para que pertenezcan a la misma familia; no hay azules.
+
+   Un criterio que se repite abajo: el violeta eléctrico es un color de fondo,
+   no de texto. Sobre blanco tiene poco contraste (2,9:1), así que todo lo que
+   se lee sobre claro va en violeta oscuro, y el eléctrico queda para rellenos
+   —el panel lateral, los acentos— siempre con texto blanco encima. */
+:root {
+  --negro: #161616;
+  --violeta: #9966ff;
+  --violeta-oscuro: #331d75;
+  --lila: #e1d7ff;
+
+  --em-ink: var(--negro);
+  --em-muted-ink: #6b6478;
+  --em-canvas: #f7f4fd;
+  --em-canvas-strong: #efe9fb;
+  --em-border: #e5ddf6;
+  --em-purple: var(--violeta-oscuro);
+  --em-purple-dark: #241357;
+  --em-purple-soft: var(--lila);
+  --em-violet: var(--violeta);
+  --em-sidebar: var(--negro);
+  --sidebar-violet: var(--violeta);
+  --sidebar-violet-dark: #8a55f5;
+  --admin-ink: var(--violeta-oscuro);
+}
+/* Los nombres viejos siguen existiendo para no tener que tocar cada regla. */
+:root {
+  --ink: var(--em-ink);
+  --muted-ink: var(--em-muted-ink);
+  --canvas: var(--em-canvas);
+  --canvas-strong: var(--em-canvas-strong);
+  --border: var(--em-border);
+  --purple: var(--em-purple);
+  --purple-dark: var(--em-purple-dark);
+  --purple-soft: var(--em-purple-soft);
+  --violet: var(--em-violet);
+  --sidebar: var(--em-sidebar);
+}
+
+/* Panel lateral: violeta eléctrico con letras blancas. */
+.sidebar { background: var(--violeta); color: #fff; }
+.sidebar .nav-item { color: #fff; }
+.sidebar .nav-item:hover { background: rgba(255, 255, 255, .18); }
+.sidebar .nav-item.active { background: var(--violeta-oscuro); border-color: transparent; }
+.sidebar .nav-heading { color: var(--lila); }
+.brand-text small { color: var(--lila); }
+.sidebar .client-switcher,
+.logout { color: var(--violeta-oscuro); background: #fff; }
+.sidebar .client-switcher svg { stroke: var(--violeta-oscuro); }
+.client-option small { color: var(--lila); }
+.nav-vacio { color: var(--lila); }
+
+/* Botones de acción: violeta oscuro el principal, eléctrico el secundario. */
+.primary-action, .secondary-action, .apply-button {
+  background: var(--violeta-oscuro); box-shadow: 0 7px 18px rgba(51, 29, 117, .24);
+}
+.primary-action.ghost { background: var(--violeta); }
+.primary-action:hover, .apply-button:hover { background: #241357; }
+.primary-action.ghost:hover { background: #8a55f5; }
+
+/* Acentos sobre claro: siempre violeta oscuro; el lila, de relleno. */
+.kpi-card.selected { border-color: var(--violeta-oscuro); }
+.objective-button.active { background: var(--violeta-oscuro); border-color: var(--violeta-oscuro); color: #fff; }
+.tag-on { background: var(--lila); color: var(--violeta-oscuro); }
+
+/* Login: acá sí va el gradiente de marca (el #3), que es el único lugar
+   donde el manual lo pide. */
+.login-screen {
+  background:
+    radial-gradient(90% 70% at 82% 6%, rgba(153, 102, 255, .95) 0%, rgba(51, 29, 117, .92) 42%, rgba(22, 22, 22, 0) 78%),
+    linear-gradient(155deg, #331d75 0%, #1d1140 45%, var(--negro) 100%);
+}
+.login-brand { color: var(--violeta-oscuro); }

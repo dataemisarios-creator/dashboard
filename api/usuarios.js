@@ -28,7 +28,7 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: 'Hace falta perfil de administrador.' });
 
   if (req.method === 'POST') {
-    const { usuario, nombre, rol, alcance, clave, activo = true } = req.body || {};
+    const { usuario, nombre, correo, rol, alcance, cuentas, clave, activo = true } = req.body || {};
     if (!usuario || !clave) return res.status(400).json({ error: 'Faltan el usuario y la contraseña.' });
     if (usuarios.some((u) => String(u.usuario).toLowerCase() === String(usuario).toLowerCase()))
       return res.status(409).json({ error: 'Ya existe un usuario con ese nombre.' });
@@ -38,7 +38,9 @@ export default async function handler(req, res) {
       nombre: nombre || usuario,
       rol: rol || 'Lectura',
       alcance: alcance || 'Todas las cuentas',
+      correo: correo || '',
       activo: activo !== false,
+      cuentas: Array.isArray(cuentas) ? cuentas : [],
       hash: hashear(String(clave)),
     };
     const lista = [...usuarios, nuevo];
@@ -47,7 +49,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'PUT') {
-    const { id, usuario, nombre, rol, alcance, clave, activo } = req.body || {};
+    const { id, usuario, nombre, correo, rol, alcance, cuentas, clave, activo } = req.body || {};
     const indice = usuarios.findIndex((u) => u.id === id);
     if (indice < 0) return res.status(404).json({ error: 'Ese usuario ya no existe.' });
 
@@ -58,6 +60,8 @@ export default async function handler(req, res) {
       if (nombre) actualizado.nombre = nombre;
       if (rol) actualizado.rol = rol;
       if (alcance) actualizado.alcance = alcance;
+      if (correo !== undefined) actualizado.correo = correo;
+      if (Array.isArray(cuentas)) actualizado.cuentas = cuentas;
       if (activo !== undefined) actualizado.activo = activo !== false;
     }
     if (clave) actualizado.hash = hashear(String(clave));

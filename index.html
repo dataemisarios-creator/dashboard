@@ -36,39 +36,18 @@
           <span class="brand-text"><strong>Emisarios</strong><small>DASHBOARD DE SEGUIMIENTO</small></span>
         </div>
 
-        <button class="client-switcher" id="client-switcher" type="button" aria-label="Cambiar cliente">
-          <span class="client-avatar">GA</span>
-          <span class="client-name">Geely Argentina</span>
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
-        </button>
+        <div class="client-wrap">
+          <button class="client-switcher" id="client-switcher" type="button" aria-label="Cambiar cliente" aria-expanded="false">
+            <span class="client-avatar">—</span>
+            <span class="client-name">Cargando…</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+          <div class="client-list" id="client-list" role="menu" hidden></div>
+        </div>
 
-        <p class="nav-heading">CUENTAS PAGAS</p>
-        <nav aria-label="Cuentas pagas">
-          <button class="nav-item" data-platform="google" type="button">
-            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 8 18H4z" /></svg></span>
-            <span class="nav-label">Google Ads</span><i></i>
-          </button>
-          <button class="nav-item active" data-platform="meta" type="button">
-            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 15c0-4 2-8 4.5-8S11 12 12 12s2-5 4.5-5S21 11 21 15c0 2-1 3-2.5 3S15 15 12 15s-5 3-6.5 3S3 17 3 15Z" /></svg></span>
-            <span class="nav-label">Meta Ads</span><i></i>
-          </button>
-          <button class="nav-item" data-platform="tiktok" type="button">
-            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 4v10.5a3.5 3.5 0 1 1-3-3.46" /><path d="M14 4c.6 2.4 2.2 3.8 5 4" /></svg></span>
-            <span class="nav-label">TikTok Ads</span><i></i>
-          </button>
-        </nav>
-
-        <p class="nav-heading">CUENTAS ORGÁNICAS</p>
-        <nav aria-label="Cuentas orgánicas">
-          <button class="nav-item" data-platform="tiktokOrganic" type="button">
-            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 4v10.5a3.5 3.5 0 1 1-3-3.46" /><path d="M14 4c.6 2.4 2.2 3.8 5 4" /></svg></span>
-            <span class="nav-label">Tiktok</span><i></i>
-          </button>
-          <button class="nav-item" data-platform="instagram" type="button">
-            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="5" /><circle cx="12" cy="12" r="3.6" /><circle cx="17.2" cy="6.8" r=".9" fill="currentColor" stroke="none" /></svg></span>
-            <span class="nav-label">Instagram/Facebook</span><i></i>
-          </button>
-        </nav>
+        <!-- El menú de cuentas se arma con lo que devuelve /api/cuentas: lo que
+             está conectado en Windsor y además habilitado para este usuario. -->
+        <div id="account-nav"></div>
 
         <p class="nav-heading">ANÁLISIS</p>
         <nav aria-label="Análisis">
@@ -139,9 +118,14 @@
                     <button type="button" data-quick-period="last7">Últimos 7 días</button><button type="button" data-quick-period="last14">Últimos 14 días</button>
                     <button type="button" data-quick-period="thisMonth">Este mes</button><button type="button" data-quick-period="lastMonth">El mes pasado</button>
                   </div>
+                  <label class="include-today" id="include-today-wrap">
+                    <input type="checkbox" id="include-today" checked />
+                    Incluir hoy
+                    <small>Sin marcar, el período cierra ayer.</small>
+                  </label>
                   <div class="custom-dates">
-                    <input id="date-start" aria-label="Fecha de inicio" type="date" value="2026-09-01" />
-                    <input id="date-end" aria-label="Fecha de fin" type="date" value="2026-09-16" />
+                    <input id="date-start" aria-label="Fecha de inicio" type="date" />
+                    <input id="date-end" aria-label="Fecha de fin" type="date" />
                   </div>
                   <button class="apply-button" id="apply-period" type="button">Aplicar período</button>
                 </div>

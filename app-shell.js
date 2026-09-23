@@ -70,7 +70,10 @@ let sinDesplegarHasta = 0;
 function desplegarLateral() {
   if (esEscritorio() && Date.now() > sinDesplegarHasta) lateral.classList.add("expanded");
 }
-function cerrarLateral() { lateral.classList.remove("expanded"); }
+function cerrarLateral() {
+  lateral.classList.remove("expanded");
+  abrirListaClientes(false);
+}
 function esEscritorio() { return window.innerWidth > 700; }
 
 lateral.addEventListener("mouseover", desplegarLateral);
@@ -80,7 +83,9 @@ lateral.addEventListener("focusout", (e) => { if (!lateral.contains(e.relatedTar
 /* Al elegir una sección el panel se cierra solo: si no, el clic repinta la vista
    y el puntero queda sobre el contenido sin que llegue a dispararse mouseleave. */
 lateral.addEventListener("click", (e) => {
-  if (!e.target.closest(".nav-item, .logout, .client-switcher")) return;
+  /* El selector de cliente no cierra el panel: abre la lista ahí mismo. Quien
+     lo cierra es elegir una cuenta, un cliente de esa lista, o cerrar sesión. */
+  if (!e.target.closest(".nav-item, .logout, .client-option")) return;
   cerrarLateral();
   sinDesplegarHasta = Date.now() + 600;
 });
@@ -142,25 +147,84 @@ window.PanelEmisarios = {
   clientesListos: (lista) => pintarClientes(lista),
 };
 
-/* El selector de cliente se arma con lo que devuelve /api/cuentas. */
+/* ── Clientes y cuentas del lateral ──────────────────────────────────────
+   Todo el menú sale de /api/cuentas: sólo aparece lo que está conectado en
+   Windsor y además habilitado para este usuario. */
+const ICONOS = {
+  google: '<svg viewBox="0 0 24 24"><path d="m12 3 8 18H4z" /></svg>',
+  meta: '<svg viewBox="0 0 24 24"><path d="M3 15c0-4 2-8 4.5-8S11 12 12 12s2-5 4.5-5S21 11 21 15c0 2-1 3-2.5 3S15 15 12 15s-5 3-6.5 3S3 17 3 15Z" /></svg>',
+  tiktok: '<svg viewBox="0 0 24 24"><path d="M14 4v10.5a3.5 3.5 0 1 1-3-3.46" /><path d="M14 4c.6 2.4 2.2 3.8 5 4" /></svg>',
+  instagram: '<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="5" /><circle cx="12" cy="12" r="3.6" /><circle cx="17.2" cy="6.8" r=".9" fill="currentColor" stroke="none" /></svg>',
+};
+
 let clienteActual = null;
+let listaClientes = [];
+
 function pintarClientes(lista) {
-  if (!lista.length) return;
-  if (!clienteActual) elegirCliente(lista[0]);
-  $("#client-switcher").onclick = () => {
-    const actual = lista.findIndex((c) => c.id === clienteActual.id);
-    elegirCliente(lista[(actual + 1) % lista.length]);
-  };
-  $("#client-switcher").title = lista.length > 1 ? "Clic para cambiar de cliente" : clienteActual.nombre;
+  listaClientes = lista;
+  if (!lista.length) {
+    $("#account-nav").innerHTML = '<p class="nav-vacio">Tu usuario todavía no tiene ninguna cuenta habilitada.</p>';
+    $(".client-name").textContent = "Sin cuentas";
+    $(".client-avatar").textContent = "—";
+    return;
+  }
+  $("#client-list").innerHTML = lista.map((c) => `
+    <button class="client-option" type="button" role="menuitem" data-cliente="${c.id}">
+      <span class="client-avatar">${c.inicial}</span>
+      <span>${c.nombre}<small>${c.cuentas.length} cuenta${c.cuentas.length === 1 ? "" : "s"}</small></span>
+    </button>`).join("");
+  marcarClienteElegido();
+  $$("[data-cliente]").forEach((b) => (b.onclick = () => {
+    elegirCliente(lista.find((c) => c.id === b.dataset.cliente));
+    abrirListaClientes(false);
+  }));
+  // Con un solo cliente el selector es una tarjeta fija, no un desplegable.
+  $("#client-switcher").disabled = lista.length < 2;
+  if (!clienteActual || !lista.some((c) => c.id === clienteActual.id)) elegirCliente(lista[0]);
 }
+
+function marcarClienteElegido() {
+  $$("[data-cliente]").forEach((b) =>
+    b.setAttribute("aria-pressed", String(!!clienteActual && b.dataset.cliente === clienteActual.id)));
+}
+
+function abrirListaClientes(abrir) {
+  if (!$("#client-list")) return;
+  $("#client-list").hidden = !abrir;
+  $("#client-switcher").setAttribute("aria-expanded", String(abrir));
+}
+$("#client-switcher").onclick = (e) => {
+  e.stopPropagation();
+  abrirListaClientes($("#client-list").hidden);
+};
+
+const GRUPOS = [["pagas", "CUENTAS PAGAS"], ["organicas", "CUENTAS ORGÁNICAS"]];
+
+function pintarNavDeCuentas(cliente) {
+  $("#account-nav").innerHTML = GRUPOS.map(([grupo, titulo]) => {
+    const cuentas = cliente.cuentas.filter((c) => c.grupo === grupo);
+    if (!cuentas.length) return "";
+    return `<p class="nav-heading">${titulo}</p>
+      <nav aria-label="${titulo}">${cuentas.map((c) => `
+        <button class="nav-item" data-platform="${c.id}" type="button">
+          <span class="nav-icon" aria-hidden="true">${ICONOS[c.tipo] || ""}</span>
+          <span class="nav-label">${c.titulo}</span><i></i>
+        </button>`).join("")}</nav>`;
+  }).join("");
+  $$("#account-nav [data-platform]").forEach((b) => (b.onclick = () => {
+    setPlatform(b.dataset.platform);
+    mostrarVista("dashboard");
+    filtrosAplicados();
+  }));
+}
+
 function elegirCliente(cliente) {
   clienteActual = cliente;
   $(".client-avatar").textContent = cliente.inicial;
   $(".client-name").textContent = cliente.nombre;
-  if (window.DatosEmisarios) window.DatosEmisarios.elegirCliente(cliente.id, cliente.nombre);
-  rutaDelPanelSiCorresponde();
-}
-function rutaDelPanelSiCorresponde() {
+  marcarClienteElegido();
+  pintarNavDeCuentas(cliente);
+  if (window.DatosEmisarios) window.DatosEmisarios.elegirCliente(cliente, cliente.cuentas[0]);
   if (vistaActiva === "dashboard") pintarRuta(rutaDeVista("dashboard"));
 }
 
@@ -214,16 +278,12 @@ $("#export-all").onclick = () => {
 $("#download-cancel").onclick = () => dialogoDescarga.close();
 $$("[data-download-period]").forEach((b) => (b.onclick = () => {
   $$("[data-download-period]").forEach((x) => x.classList.toggle("active", x === b));
-  const fin = new Date(`${state.end}T12:00:00`), inicio = new Date(fin);
   const modo = b.dataset.downloadPeriod;
-  if (modo === "yesterday") { inicio.setDate(inicio.getDate() - 1); fin.setDate(fin.getDate() - 1); }
-  else if (modo === "last7") inicio.setDate(inicio.getDate() - 6);
-  else if (modo === "last14") inicio.setDate(inicio.getDate() - 13);
-  else if (modo === "thisMonth") inicio.setDate(1);
-  else if (modo === "lastMonth") { fin.setDate(0); inicio.setTime(fin.getTime()); inicio.setDate(1); }
-  else if (modo === "custom") return;
-  $("#download-start").value = toISO(inicio);
-  $("#download-end").value = toISO(fin);
+  if (modo === "custom") return;
+  // Los mismos rangos que el filtro de arriba, contados desde hoy.
+  const [desde, hasta] = rangoRapido(modo);
+  $("#download-start").value = desde;
+  $("#download-end").value = hasta;
 }));
 
 $("#download-confirm").onclick = () => {
@@ -411,18 +471,34 @@ $("#password-confirm").onclick = async () => {
 /* Alta y edición */
 let idEditando = null;
 function pintarMatriz(seleccion) {
+  /* La matriz lista todos los clientes y todas las cuentas conectadas en
+     Windsor. Cuando un cliente tiene dos perfiles de la misma red, cada uno es
+     una casilla aparte con el nombre del perfil: son accesos distintos. */
+  const esAdmin = $("#f-role").value === "Administrador";
   const columnas = Math.max(1, ...clientes.map((c) => c.cuentas.length));
-  $("#accounts-matrix").style.setProperty("--columnas", columnas);
-  $("#accounts-matrix").innerHTML = clientes.length
-    ? clientes.map((fila) => `
+  const matriz = $("#accounts-matrix");
+  matriz.style.setProperty("--columnas", columnas);
+  if (!clientes.length) {
+    matriz.innerHTML = '<p class="form-note">No se pudieron leer las cuentas conectadas en Windsor.</p>';
+    return;
+  }
+  matriz.innerHTML =
+    (esAdmin ? '<p class="form-note">El perfil de administrador ve todas las cuentas conectadas. Para dar acceso a algunas nada más, elegí otro rol.</p>' : "") +
+    clientes.map((fila) => `
       <div class="accounts-row">
         <strong>${fila.nombre}</strong>
         ${fila.cuentas.map((cuenta) => {
           const id = `${fila.id}-${cuenta.id}`;
-          return `<label><input type="checkbox" data-cuenta="${id}" ${seleccion.includes(id) ? "checked" : ""}> ${cuenta.titulo}</label>`;
+          const marcada = esAdmin || seleccion.includes(id);
+          return `<label><input type="checkbox" data-cuenta="${id}" ${marcada ? "checked" : ""} ${esAdmin ? "disabled" : ""}> ${cuenta.titulo}</label>`;
         }).join("")}
-      </div>`).join("")
-    : '<p class="form-note">No se pudieron leer las cuentas conectadas en Windsor.</p>';
+      </div>`).join("");
+}
+
+/* Al cambiar el rol se vuelve a dibujar: administrador implica todas. */
+$("#f-role").onchange = () => pintarMatriz(seleccionActual());
+function seleccionActual() {
+  return $$("[data-cuenta]").filter((i) => i.checked).map((i) => i.dataset.cuenta);
 }
 
 function abrirFormulario(id) {
@@ -455,9 +531,11 @@ $("#user-form").onsubmit = async (e) => {
   const usuario = $("#f-user").value.trim(), nombre = $("#f-name").value.trim();
   if (!usuario || !nombre) { err.textContent = "El nombre de usuario y el nombre son obligatorios."; err.hidden = false; return; }
 
-  const cuentas = $$("[data-cuenta]").filter((i) => i.checked).map((i) => i.dataset.cuenta);
   const rol = $("#f-role").value;
-  const alcance = rol === "Cliente" ? (cuentas.length ? `${cuentas.length} cuentas asignadas` : "Sin cuentas") : "Todas las cuentas";
+  const cuentas = rol === "Administrador" ? [] : seleccionActual();
+  const alcance = rol === "Administrador"
+    ? "Todas las cuentas"
+    : cuentas.length ? `${cuentas.length} cuenta${cuentas.length === 1 ? "" : "s"}` : "Sin cuentas";
   const correo = $("#f-mail").value.trim();
 
   try {
