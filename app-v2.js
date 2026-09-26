@@ -702,12 +702,9 @@ function renderKpis() {
     const fabrica=(p.defaults[state.objective]||p.metrics).slice(0,6);
     volver.hidden=metrics.length===fabrica.length && metrics.every((m,i)=>m===fabrica[i]);
   }
+  /* El botón abre el selector siempre: ahora también sirve para quitar. */
   const agregar=document.querySelector("#agregar-kpi");
-  if(agregar){
-    const quedan=currentPlatform().metrics.filter(m=>!metrics.includes(m)).length;
-    agregar.disabled=metrics.length>=MAX_KPIS || !quedan;
-    agregar.title=metrics.length>=MAX_KPIS ? `El máximo es de ${MAX_KPIS} tarjetas` : (quedan?"":"Ya se muestran todos los indicadores disponibles");
-  }
+  if(agregar) agregar.title=`${metrics.length} de ${MAX_KPIS} indicadores en pantalla`;
 
   grid.querySelectorAll(".kpi-card").forEach(card=>card.onclick=e=>{
     if(e.target.dataset.remove){quitarKpi(e.target.dataset.remove);return}
@@ -741,7 +738,7 @@ function moverKpi(origen,destino){
 
 /* Siempre queda una tarjeta: una grilla vacía no dice nada y deja al gráfico
    sin ningún indicador que dibujar. */
-function quitarKpi(metric){
+function quitarKpi(metric, repintar=true){
   const lista=listaKpis();
   if(lista.length<=1)return;
   state.kpis[DATOS.tipo]=lista.filter(m=>m!==metric);
@@ -750,14 +747,43 @@ function quitarKpi(metric){
     const otro=state.kpis[DATOS.tipo].find(m=>!SIN_SERIE.has(m));
     if(otro) state.selectedMetrics=[otro];
   }
-  guardarKpis(); renderKpis(); renderChart();
+  guardarKpis();
+  // El selector repinta una sola vez al final, no con cada casilla.
+  if(repintar){ renderKpis(); renderChart(); }
 }
 
-function openKpiDialog() {
-  const p=currentPlatform(); const shown=currentMetrics(); const choices=p.metrics.filter(m=>!shown.includes(m));
-  document.querySelector("#kpi-dialog-options").innerHTML=choices.length?choices.map(m=>`<button type="button" class="kpi-choice" data-add-kpi="${m}">${metricLabel(m)}<span>+</span></button>`).join(""):`<p>Ya se muestran todos los KPI disponibles.</p>`;
-  document.querySelectorAll("[data-add-kpi]").forEach(b=>b.onclick=()=>{ if(listaKpis().length<MAX_KPIS) listaKpis().push(b.dataset.addKpi); guardarKpis(); document.querySelector("#kpi-dialog").close(); renderKpis(); }); document.querySelector("#kpi-dialog").showModal();
+/* Elegir indicadores es una sola visita al diálogo: se marcan y se desmarcan
+   todos los que hagan falta y el panel de atrás se va actualizando. Antes cada
+   indicador obligaba a abrirlo, elegir uno y volver a abrirlo. */
+function pintarOpcionesKpi() {
+  const p=currentPlatform();
+  document.querySelector("#kpi-dialog-options").innerHTML=p.metrics
+    .map(m=>`<label class="kpi-opcion"><input type="checkbox" data-kpi="${m}"> <span>${metricLabel(m)}</span></label>`).join("");
+  document.querySelectorAll("[data-kpi]").forEach(c=>c.onchange=()=>{
+    if(c.checked){ if(listaKpis().length<MAX_KPIS){ listaKpis().push(c.dataset.kpi); guardarKpis(); } }
+    else quitarKpi(c.dataset.kpi, false);
+    renderKpis(); renderChart(); sincronizarOpcionesKpi();
+  });
+  sincronizarOpcionesKpi();
 }
+
+/* Sólo se actualiza el estado de cada casilla, no se rehace la lista: con
+   treinta y pico de indicadores, volver a dibujarla mandaba el scroll arriba
+   en cada clic. */
+function sincronizarOpcionesKpi() {
+  const puestos=currentMetrics();
+  // Al llegar al tope no se puede sumar otro, y nunca se quita el último.
+  const lleno=puestos.length>=MAX_KPIS, ultimo=puestos.length<=1;
+  document.querySelector("#kpi-dialog-cuenta").textContent=`${puestos.length} de ${MAX_KPIS} en pantalla`;
+  document.querySelectorAll("[data-kpi]").forEach(c=>{
+    const puesto=puestos.includes(c.dataset.kpi);
+    c.checked=puesto;
+    c.disabled=puesto?ultimo:lleno;
+    c.closest(".kpi-opcion").classList.toggle("bloqueada",c.disabled);
+  });
+}
+function openKpiDialog() { pintarOpcionesKpi(); document.querySelector("#kpi-dialog").showModal(); }
+
 function toggleChartMetric(metric){ if(SIN_SERIE.has(metric))return; const i=state.selectedMetrics.indexOf(metric); if(i>=0&&state.selectedMetrics.length>1)state.selectedMetrics.splice(i,1); else if(i<0){if(state.selectedMetrics.length===2)state.selectedMetrics.shift();state.selectedMetrics.push(metric);if(!state.chartTypes[metric])state.chartTypes[metric]="line"} renderKpis();renderChart(); }
 
 /* La serie sale de las filas por fecha. Con granularidad semanal o mensual se
