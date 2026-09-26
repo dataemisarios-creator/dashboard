@@ -43,7 +43,19 @@ const GOOGLE_EXTRAS = [
   { id: 'ciudades', titulo: 'Ciudades', columna: 'Ciudad', campo: 'city', campos: `city,${GOOGLE_METRICAS}` },
   { id: 'provincias', titulo: 'Provincias', columna: 'Provincia', campo: 'region', campos: `region,${GOOGLE_METRICAS}` },
 ];
-const TIKTOK_METRICAS = 'spend,impressions,clicks,reach,play_duration_6s,follows,profile_visits,shares';
+/* Sólo campos sumables: las tasas (CTR, CPC, CPM, frecuencia, VTR) se calculan
+   sobre los totales del período, nunca promediando las diarias. `reach` se pide
+   igual porque en las consultas sin fecha es el alcance único de esa entidad.
+   Las de conversión y embudo vienen en cero en una cuenta de video, pero
+   existen en el conector y se ofrecen para agregar cuando la cuenta convierta. */
+const TIKTOK_METRICAS = [
+  'spend', 'impressions', 'clicks', 'reach',
+  'total_play', 'play_duration_2s', 'play_duration_6s',
+  'play_first_quartile', 'play_midpoint', 'play_third_quartile', 'play_over',
+  'likes', 'comments', 'shares', 'follows', 'profile_visits',
+  'conversions', 'complete_payment', 'total_complete_payment_rate',
+  'total_pageview', 'total_landing_page_view', 'web_event_add_to_cart', 'initiate_checkout',
+].join(',');
 const TIKTOK = `date,campaign,objective_type,campaign_status,${TIKTOK_METRICAS}`;
 /* TikTok no informa el nombre del conjunto (`adgroup_name` vuelve vacío), así
    que el desglose de esta cuenta llega hasta el anuncio. */

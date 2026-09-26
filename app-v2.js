@@ -5,8 +5,18 @@ const metricDefs = {
   conversions: ["Leads / conversiones", "number"], cpa: ["CPL / CPA", "currency"], instagramProfileVisits: ["Visitas al perfil de Instagram", "number"], instagramFollows: ["Seguimientos de Instagram", "number"],
   clicks: ["Clics", "number"], ctr: ["CTR", "percent"], cpc: ["CPC", "currency"], views: ["Visualizaciones", "number"], cpv: ["CPV", "currency"],
   allConversions: ["Todas las conversiones", "number"], cpaTodas: ["Costo / todas las conv.", "currency"],
+  /* TikTok: retención de video, interacción y embudo. Las tasas se calculan
+     sobre impresiones, que es el denominador con el que se leen en la
+     plataforma. */
+  views2s: ["Reproducciones de 2 s", "number"], views6s: ["Reproducciones de 6 s", "number"],
+  views25: ["Vistas al 25%", "number"], views50: ["Vistas al 50%", "number"], views75: ["Vistas al 75%", "number"], views100: ["Vistas al 100%", "number"],
+  hookRate: ["Tasa de gancho (2 s)", "percent"], vtr: ["Tasa de finalización", "percent"],
+  interactions: ["Interacciones", "number"],
+  revenue: ["Ingresos", "currency"], roas: ["ROAS", "decimal"], purchases: ["Compras", "number"],
+  pageViews: ["Visitas a la página", "number"], landingPageViews: ["Vistas de la página de destino", "number"],
+  addToCart: ["Añadir al carrito", "number"], checkout: ["Inicio de pago", "number"],
   videoViews: ["Reproducciones de video", "number"], paidFollowers: ["Seguidores pagos", "number"], tiktokProfileVisits: ["Visitas al perfil de TikTok", "number"], shares: ["Compartidos", "number"],
-  followers: ["Seguidores totales", "number"], newFollowers: ["Nuevos seguidores", "number"], unfollows: ["Dejaron de seguir", "number"], balance: ["Balance de seguidores", "number"], reels: ["Reels publicados", "number"], feedPosts: ["Posteos en el feed", "number"], stories: ["Historias", "number"], interactions: ["Interacciones totales", "number"], saves: ["Guardados", "number"], likes: ["Me gusta", "number"], comments: ["Comentarios", "number"]
+  followers: ["Seguidores totales", "number"], newFollowers: ["Nuevos seguidores", "number"], unfollows: ["Dejaron de seguir", "number"], balance: ["Balance de seguidores", "number"], reels: ["Reels publicados", "number"], feedPosts: ["Posteos en el feed", "number"], stories: ["Historias", "number"], saves: ["Guardados", "number"], likes: ["Me gusta", "number"], comments: ["Comentarios", "number"]
 };
 
 const platforms = {
@@ -28,7 +38,10 @@ const platforms = {
   },
   tiktok: {
     title: "TikTok Ads", description: "Rendimiento de campañas y videos promocionados en TikTok.", paid: true,
-    metrics: ["spend","impressions","cpm","reach","frequency","videoViews","cpv","paidFollowers","tiktokProfileVisits","shares"],
+    metrics: ["spend","impressions","cpm","reach","frequency","videoViews","cpv","clicks","ctr","cpc",
+      "views2s","views6s","views25","views50","views75","views100","hookRate","vtr",
+      "interactions","likes","comments","shares","paidFollowers","tiktokProfileVisits",
+      "conversions","cpa","revenue","roas","purchases","pageViews","landingPageViews","addToCart","checkout"],
     objectives: { video: "Video", traffic: "Tráfico al perfil", followers: "Seguidores" },
     defaults: { video: ["spend","impressions","videoViews","cpv","reach","frequency"], traffic: ["spend","impressions","tiktokProfileVisits","shares","cpm","frequency"], followers: ["spend","paidFollowers","tiktokProfileVisits","reach","frequency","impressions"] },
     campaigns: [["tiktok-1","TikTok · Lanzamiento SUV","video",1], ["tiktok-2","TikTok · Visitas al perfil","traffic",.74], ["tiktok-3","TikTok · Seguidores","followers",.58]]
@@ -40,7 +53,7 @@ const platforms = {
     /* Instagram informa el alcance de cada día, no el del período: sumarlo
        cuenta dos veces a quien vio contenido dos días distintos. Se dice en la
        etiqueta en lugar de hacerlo pasar por alcance único. */
-    etiquetas: { reach: "Alcance (suma diaria)", views: "Visualizaciones" }
+    etiquetas: { reach: "Alcance (suma diaria)", views: "Visualizaciones", interactions: "Interacciones totales" }
   },
   tiktokOrganic: {
     title: "TikTok orgánico", description: "Publicaciones, visualizaciones e interacción orgánica en TikTok.", paid: false,
@@ -71,7 +84,14 @@ const state = {
 const CAMPOS = {
   meta: { spend:"spend", impressions:"impressions", clicks:"clicks", conversions:"resultado", instagramProfileVisits:"instagram_profile_visits", instagramFollows:"instagram_profile_follow" },
   google: { spend:"spend", impressions:"impressions", clicks:"clicks", conversions:"conversions", allConversions:"all_conversions", views:"video_trueview_views" },
-  tiktok: { spend:"spend", impressions:"impressions", clicks:"clicks", videoViews:"play_duration_6s", paidFollowers:"follows", tiktokProfileVisits:"profile_visits", shares:"shares" },
+  tiktok: { spend:"spend", impressions:"impressions", clicks:"clicks",
+    videoViews:"total_play", views2s:"play_duration_2s", views6s:"play_duration_6s",
+    views25:"play_first_quartile", views50:"play_midpoint", views75:"play_third_quartile", views100:"play_over",
+    likes:"likes", comments:"comments", shares:"shares",
+    paidFollowers:"follows", tiktokProfileVisits:"profile_visits",
+    conversions:"conversions", purchases:"complete_payment", revenue:"total_complete_payment_rate",
+    pageViews:"total_pageview", landingPageViews:"total_landing_page_view",
+    addToCart:"web_event_add_to_cart", checkout:"initiate_checkout" },
   instagram: { reach:"reach", views:"views", interactions:"total_interactions", likes:"likes", comments:"comments", shares:"shares", saves:"saves", newFollowers:"follower_count" },
   tiktokOrganic: {},
 };
@@ -181,6 +201,14 @@ function totalizar(plataforma, filas, alcance, extra = {}) {
   t.cpa = tasa(t.spend, t.conversions);
   t.cpv = tasa(t.spend, t.views || t.videoViews);
   t.cpaTodas = tasa(t.spend, t.allConversions);
+  /* Retención de video: qué parte de lo que se mostró llegó a cada punto. */
+  t.hookRate = tasa(t.views2s, t.impressions, 100);
+  t.vtr = tasa(t.views100, t.impressions, 100);
+  t.roas = tasa(t.revenue, t.spend);
+  /* Donde el conector no informa una interacción total propia, se suma. En
+     Instagram sí la informa y es más amplia, así que ahí no se toca. */
+  if (!mapa.interactions && (t.likes !== undefined || t.comments !== undefined || t.shares !== undefined))
+    t.interactions = (t.likes || 0) + (t.comments || 0) + (t.shares || 0);
   t.frequency = t.reach === null ? null : tasa(t.impressions, t.reach);
 
   /* Seguidores totales y publicaciones son el valor de hoy: llegan en una
@@ -221,15 +249,22 @@ const filasElegidas = (filas) => {
   return filas.filter((f) => !f.campaign || activas.has(f.campaign));
 };
 
+/* El alcance único no se suma. Con todas las campañas vale el de la cuenta;
+   con una sola, el de esa campaña, que se pide aparte. Con un subconjunto de
+   varias no existe un valor válido: sumarlos contaría dos veces a quien vio
+   dos campañas, así que se muestra vacío. */
+function alcanceDelFiltro(mapa, total) {
+  const elegidas = [...campaniasEnJuego()];
+  if (elegidas.length === DATOS.campanias.length) return total;
+  if (elegidas.length === 1) return mapa[elegidas[0]] ?? null;
+  return null;
+}
 function totalesActuales() {
-  // El alcance único es de toda la cuenta: con un filtro de campaña no aplica.
-  const todas = campaniasEnJuego().size === DATOS.campanias.length;
-  return totalizar(DATOS.tipo, filasElegidas(DATOS.filas), todas ? DATOS.alcance : null, { foto: DATOS.foto, contenido: DATOS.contenido });
+  return totalizar(DATOS.tipo, filasElegidas(DATOS.filas), alcanceDelFiltro(DATOS.alcanceCampania, DATOS.alcance), { foto: DATOS.foto, contenido: DATOS.contenido });
 }
 function totalesComparacion() {
   if (state.comparison === "none" || !DATOS.filasComparacion.length) return null;
-  const todas = campaniasEnJuego().size === DATOS.campanias.length;
-  return totalizar(DATOS.tipo, filasElegidas(DATOS.filasComparacion), todas ? DATOS.alcanceComparacion : null, { foto: DATOS.fotoComparacion, contenido: DATOS.contenidoComparacion });
+  return totalizar(DATOS.tipo, filasElegidas(DATOS.filasComparacion), alcanceDelFiltro(DATOS.alcanceCampaniaComparacion, DATOS.alcanceComparacion), { foto: DATOS.fotoComparacion, contenido: DATOS.contenidoComparacion });
 }
 
 /** Rango del período de comparación, con la misma regla que el selector. */
@@ -608,10 +643,12 @@ function renderObjectives() {
   const opciones=[[TODOS_LOS_OBJETIVOS,"Todos los objetivos"],...deLasCampanias.map(o=>[o,o])];
   document.querySelector("#objective-buttons").innerHTML=opciones
     .map(([id,texto])=>`<button class="objective-button ${id===state.objective?"active":""}" data-objective="${id}">${texto}</button>`).join("");
-  document.querySelector("#objective-row").classList.toggle("single-objective",deLasCampanias.length<=1);
+  /* Igual que las campañas: se elige y lo confirma APLICAR FILTROS. Un solo
+     objetivo también se puede elegir; que quedara fijo confundía. */
   document.querySelectorAll("[data-objective]").forEach(b=>b.onclick=()=>{
     state.objective=b.dataset.objective;
-    renderObjectives(); renderKpis(); renderChart(); renderTable(); renderAdditionalModules();
+    document.querySelectorAll("[data-objective]").forEach(x=>x.classList.toggle("active",x===b));
+    marcarFiltrosPendientes();
   });
 }
 const ESTADOS_CAMPANIA=[["todas","Todas"],["activa","Activas"],["pausada","En pausa"],["eliminada","Eliminadas"]];
@@ -841,12 +878,15 @@ function renderTable(){
     for(const valor of primeros){
       const claveNivel=`${clave}::${valor}`;
       const ramaActual=ramaDe(DATOS.desglose,nombre,niveles,[valor]);
+      const ramaPrevia=ramaDe(DATOS.desgloseComparacion,nombre,niveles,[valor]);
       filasTabla.push({ clave:claveNivel, etiqueta:nombreDeNivel(niveles[0],valor), nivel:CLASE_NIVEL(niveles[0]), sangria:1,
         estado: DATOS.nivelesEstado[0] && ramaActual[0] ? estadoDeFila(ramaActual[0], DATOS.nivelesEstado[0]) : null,
-        alcance:DATOS.alcanceConjunto[`${nombre}::${valor}`] ?? null,
-        alcancePrevio:DATOS.alcanceConjuntoComparacion[`${nombre}::${valor}`] ?? null,
+        /* Si la rama es una sola fila del desglose (TikTok llega directo al
+           anuncio), su alcance ya es el único de esa entidad en el período. */
+        alcance:DATOS.alcanceConjunto[`${nombre}::${valor}`] ?? (ramaActual.length===1 && ramaActual[0].reach!=null ? num(ramaActual[0].reach) : null),
+        alcancePrevio:DATOS.alcanceConjuntoComparacion[`${nombre}::${valor}`] ?? (ramaPrevia.length===1 && ramaPrevia[0].reach!=null ? num(ramaPrevia[0].reach) : null),
         actuales:ramaActual,
-        previas:ramaDe(DATOS.desgloseComparacion,nombre,niveles,[valor]),
+        previas:ramaPrevia,
         desplegable:niveles.length>1 });
       if(niveles.length<2 || !state.expandedRows.has(claveNivel)) continue;
 
@@ -858,8 +898,8 @@ function renderTable(){
           estado: DATOS.nivelesEstado[1] && ramaHoja[0] ? estadoDeFila(ramaHoja[0], DATOS.nivelesEstado[1]) : null,
           /* El desglose viene sin fecha, así que el alcance del anuncio ya es
              el único del período: se puede usar tal cual. */
-          alcance: ramaHoja.length===1 ? num(ramaHoja[0].reach) || null : null,
-          alcancePrevio: previaHoja.length===1 ? num(previaHoja[0].reach) || null : null,
+          alcance: ramaHoja.length===1 && ramaHoja[0].reach!=null ? num(ramaHoja[0].reach) : null,
+          alcancePrevio: previaHoja.length===1 && previaHoja[0].reach!=null ? num(previaHoja[0].reach) : null,
           actuales:ramaHoja,
           previas:previaHoja,
           desplegable:false });

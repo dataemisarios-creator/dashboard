@@ -278,7 +278,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .popover-title strong, .popover-title button { white-space: nowrap; }
 
 /* Cuando las campañas elegidas comparten objetivo, el único botón queda fijo. */
-.objective-row.single-objective .objective-button { pointer-events: none; }
+
 
 .series-values { display: inline-flex; gap: 6px; align-items: center; padding-left: 10px; margin-left: 4px; border-left: 1px solid var(--border); color: var(--muted-ink); font-size: 12px; }
 .chart-value { font-size: 10px; font-weight: 600; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
