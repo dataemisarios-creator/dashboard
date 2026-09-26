@@ -755,10 +755,35 @@ function quitarKpi(metric, repintar=true){
 /* Elegir indicadores es una sola visita al diálogo: se marcan y se desmarcan
    todos los que hagan falta y el panel de atrás se va actualizando. Antes cada
    indicador obligaba a abrirlo, elegir uno y volver a abrirlo. */
+/* Qué indicadores tienen algo que mostrar con el filtro puesto. Se mira el
+   dato, no una tabla de compatibilidades: en una campaña de búsqueda el CPV da
+   cero porque no hay reproducciones, así que se cae solo de la lista sin que
+   nadie tenga que declararlo. */
+function indicadoresConDatos() {
+  const totales=totalesActuales();
+  return new Set(currentPlatform().metrics.filter(m=>{
+    const v=totales[m];
+    return v !== null && v !== undefined && v !== 0;
+  }));
+}
+
+let verSinDatos=false;
 function pintarOpcionesKpi() {
-  const p=currentPlatform();
-  document.querySelector("#kpi-dialog-options").innerHTML=p.metrics
-    .map(m=>`<label class="kpi-opcion"><input type="checkbox" data-kpi="${m}"> <span>${metricLabel(m)}</span></label>`).join("");
+  const p=currentPlatform(), puestos=currentMetrics(), conDatos=indicadoresConDatos();
+  /* Los que ya están en pantalla se listan siempre, aunque hoy den cero: si no,
+     no habría forma de sacarlos. */
+  const relevante=(m)=>conDatos.has(m)||puestos.includes(m);
+  let utiles=p.metrics.filter(relevante), vacios=p.metrics.filter(m=>!relevante(m));
+  // Si el filtro no deja ninguno con dato, se ofrecen todos antes que nada.
+  if(!utiles.length){ utiles=vacios; vacios=[]; }
+
+  const casilla=(m)=>`<label class="kpi-opcion"><input type="checkbox" data-kpi="${m}"> <span>${metricLabel(m)}</span></label>`;
+  const plegado=vacios.length?`<button type="button" class="kpi-vacios" id="ver-vacios">${verSinDatos?"Ocultar":"Ver"} los ${vacios.length} sin datos en este filtro</button>
+      <div id="kpi-sin-datos" ${verSinDatos?"":"hidden"}>${vacios.map(casilla).join("")}</div>`:"";
+  document.querySelector("#kpi-dialog-options").innerHTML=utiles.map(casilla).join("")+plegado;
+
+  const alternar=document.querySelector("#ver-vacios");
+  if(alternar) alternar.onclick=()=>{ verSinDatos=!verSinDatos; pintarOpcionesKpi(); };
   document.querySelectorAll("[data-kpi]").forEach(c=>c.onchange=()=>{
     if(c.checked){ if(listaKpis().length<MAX_KPIS){ listaKpis().push(c.dataset.kpi); guardarKpis(); } }
     else quitarKpi(c.dataset.kpi, false);
@@ -774,7 +799,8 @@ function sincronizarOpcionesKpi() {
   const puestos=currentMetrics();
   // Al llegar al tope no se puede sumar otro, y nunca se quita el último.
   const lleno=puestos.length>=MAX_KPIS, ultimo=puestos.length<=1;
-  document.querySelector("#kpi-dialog-cuenta").textContent=`${puestos.length} de ${MAX_KPIS} en pantalla`;
+  const filtro=state.objective===TODOS_LOS_OBJETIVOS?"":` · con el filtro «${state.objective}»`;
+  document.querySelector("#kpi-dialog-cuenta").textContent=`${puestos.length} de ${MAX_KPIS} en pantalla${filtro}`;
   document.querySelectorAll("[data-kpi]").forEach(c=>{
     const puesto=puestos.includes(c.dataset.kpi);
     c.checked=puesto;
@@ -782,7 +808,7 @@ function sincronizarOpcionesKpi() {
     c.closest(".kpi-opcion").classList.toggle("bloqueada",c.disabled);
   });
 }
-function openKpiDialog() { pintarOpcionesKpi(); document.querySelector("#kpi-dialog").showModal(); }
+function openKpiDialog() { verSinDatos=false; pintarOpcionesKpi(); document.querySelector("#kpi-dialog").showModal(); }
 
 function toggleChartMetric(metric){ if(SIN_SERIE.has(metric))return; const i=state.selectedMetrics.indexOf(metric); if(i>=0&&state.selectedMetrics.length>1)state.selectedMetrics.splice(i,1); else if(i<0){if(state.selectedMetrics.length===2)state.selectedMetrics.shift();state.selectedMetrics.push(metric);if(!state.chartTypes[metric])state.chartTypes[metric]="line"} renderKpis();renderChart(); }
 
