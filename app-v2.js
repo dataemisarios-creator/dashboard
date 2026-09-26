@@ -565,6 +565,26 @@ function restablecerKpis(){
   guardarKpis(); renderKpis(); renderChart();
 }
 function currentMetrics() { return listaKpis(); }
+
+/* Hay filtro cuando lo que se mira no es la cuenta entera: un objetivo
+   concreto o un subconjunto de campañas. */
+function hayFiltroActivo() {
+  if (state.objective && state.objective !== TODOS_LOS_OBJETIVOS) return true;
+  return DATOS.campanias.length > 0 && campaniasEnJuego().size < DATOS.campanias.length;
+}
+
+/* Con un filtro puesto, una tarjeta en cero no informa nada: ofrecer CPV en una
+   campaña de búsqueda es ofrecer un cero. Se esconde de la grilla, pero no se
+   saca de la lista del usuario, así vuelve sola al quitar el filtro.
+   Sin filtro no se esconde nada: ahí un cero sí es información (no hubo leads
+   este mes), y hacer desaparecer la tarjeta sería ocultar el dato. */
+function kpisVisibles() {
+  const lista=listaKpis();
+  if(!hayFiltroActivo()) return lista;
+  const totales=totalesActuales();
+  const conDato=lista.filter(m=>{ const v=totales[m]; return v!==null && v!==undefined && v!==0; });
+  return conDato.length?conDato:lista;
+}
 /* El valor de un indicador sale de los totales reales del período. `filas`
    permite pedir los de una campaña concreta para la tabla. */
 function valueFor(metric, filas, alcance = null) {
@@ -684,14 +704,14 @@ function renderCampaigns() {
     : elegidas.length===1 ? elegidas[0] : `${elegidas.length} seleccionadas`;
 }
 function renderKpis() {
-  const metrics=currentMetrics(); const grid=document.querySelector("#kpi-grid");
+  const lista=currentMetrics(), metrics=kpisVisibles(); const grid=document.querySelector("#kpi-grid");
   grid.innerHTML=metrics.map(metric=>{
     const idx=state.selectedMetrics.indexOf(metric);
     const delta=deltaFor(metric);
     const signo=delta===null?"":delta>=0?"↑":"↓";
     const clase=claseDeCambio(metric,delta);
     const estatico=SIN_SERIE.has(metric);
-    return `<button class="kpi-card ${idx>=0?"selected":""} ${estatico?"is-static":""}" draggable="true" ${estatico?`title="Este indicador no tiene serie diaria"`:""} data-metric="${metric}" data-order="${idx>=0?idx+1:""}" style="--series-color:${COLORS[Math.max(0,idx)]}"><span class="kpi-label">${iconoDeMetrica(metric)}${metricLabel(metric)}</span><div class="kpi-value">${fmt(metric,valueFor(metric))}</div>${delta===null?"":`<span class="kpi-delta ${clase}">${signo} ${Math.abs(delta).toFixed(1).replace(".",",")}% vs. comparación</span>`}${metrics.length>1?`<span class="kpi-remove" data-remove="${metric}" title="Quitar esta tarjeta">Quitar</span>`:""}</button>`;
+    return `<button class="kpi-card ${idx>=0?"selected":""} ${estatico?"is-static":""}" draggable="true" ${estatico?`title="Este indicador no tiene serie diaria"`:""} data-metric="${metric}" data-order="${idx>=0?idx+1:""}" style="--series-color:${COLORS[Math.max(0,idx)]}"><span class="kpi-label">${iconoDeMetrica(metric)}${metricLabel(metric)}</span><div class="kpi-value">${fmt(metric,valueFor(metric))}</div>${delta===null?"":`<span class="kpi-delta ${clase}">${signo} ${Math.abs(delta).toFixed(1).replace(".",",")}% vs. comparación</span>`}${lista.length>1?`<span class="kpi-remove" data-remove="${metric}" title="Quitar esta tarjeta">Quitar</span>`:""}</button>`;
   }).join("");
 
   /* El botón de agregar vive en el encabezado, no en la grilla: una casilla
@@ -700,11 +720,11 @@ function renderKpis() {
   if(volver){
     const p=currentPlatform();
     const fabrica=(p.defaults[state.objective]||p.metrics).slice(0,6);
-    volver.hidden=metrics.length===fabrica.length && metrics.every((m,i)=>m===fabrica[i]);
+    volver.hidden=lista.length===fabrica.length && lista.every((m,i)=>m===fabrica[i]);
   }
   /* El botón abre el selector siempre: ahora también sirve para quitar. */
   const agregar=document.querySelector("#agregar-kpi");
-  if(agregar) agregar.title=`${metrics.length} de ${MAX_KPIS} indicadores en pantalla`;
+  if(agregar) agregar.title=`${lista.length} de ${MAX_KPIS} indicadores elegidos`;
 
   grid.querySelectorAll(".kpi-card").forEach(card=>card.onclick=e=>{
     if(e.target.dataset.remove){quitarKpi(e.target.dataset.remove);return}
@@ -767,20 +787,22 @@ function indicadoresConDatos() {
   }));
 }
 
-let verSinDatos=false;
+let verSinDatos=false, sinDatosAhora=new Set();
 function pintarOpcionesKpi() {
-  const p=currentPlatform(), puestos=currentMetrics(), conDatos=indicadoresConDatos();
-  /* Los que ya están en pantalla se listan siempre, aunque hoy den cero: si no,
-     no habría forma de sacarlos. */
-  const relevante=(m)=>conDatos.has(m)||puestos.includes(m);
-  let utiles=p.metrics.filter(relevante), vacios=p.metrics.filter(m=>!relevante(m));
+  const p=currentPlatform(), elegidos=currentMetrics(), conDatos=indicadoresConDatos();
+  sinDatosAhora=new Set(p.metrics.filter(m=>!conDatos.has(m)));
+  /* Los que el usuario ya eligió y hoy no tienen dato bajan igual al grupo de
+     abajo, pero se pueden desmarcar: si no, quedarían atrapados en su lista. */
+  const utiles=p.metrics.filter(m=>conDatos.has(m));
+  let vacios=p.metrics.filter(m=>!conDatos.has(m));
   // Si el filtro no deja ninguno con dato, se ofrecen todos antes que nada.
-  if(!utiles.length){ utiles=vacios; vacios=[]; }
+  if(!utiles.length){ sinDatosAhora=new Set(); vacios=[]; }
 
   const casilla=(m)=>`<label class="kpi-opcion"><input type="checkbox" data-kpi="${m}"> <span>${metricLabel(m)}</span></label>`;
-  const plegado=vacios.length?`<button type="button" class="kpi-vacios" id="ver-vacios">${verSinDatos?"Ocultar":"Ver"} los ${vacios.length} sin datos en este filtro</button>
+  const lista=(utiles.length?utiles:p.metrics).map(casilla).join("");
+  const plegado=vacios.length?`<button type="button" class="kpi-vacios" id="ver-vacios">${verSinDatos?"Ocultar":"Ver"} los ${vacios.length} sin datos con este filtro</button>
       <div id="kpi-sin-datos" ${verSinDatos?"":"hidden"}>${vacios.map(casilla).join("")}</div>`:"";
-  document.querySelector("#kpi-dialog-options").innerHTML=utiles.map(casilla).join("")+plegado;
+  document.querySelector("#kpi-dialog-options").innerHTML=lista+plegado;
 
   const alternar=document.querySelector("#ver-vacios");
   if(alternar) alternar.onclick=()=>{ verSinDatos=!verSinDatos; pintarOpcionesKpi(); };
@@ -804,7 +826,9 @@ function sincronizarOpcionesKpi() {
   document.querySelectorAll("[data-kpi]").forEach(c=>{
     const puesto=puestos.includes(c.dataset.kpi);
     c.checked=puesto;
-    c.disabled=puesto?ultimo:lleno;
+    /* Un indicador sin datos con este filtro no se puede sumar: sería agregar
+       una tarjeta en cero. Si ya estaba elegido sí se puede sacar. */
+    c.disabled=puesto?ultimo:(lleno||sinDatosAhora.has(c.dataset.kpi));
     c.closest(".kpi-opcion").classList.toggle("bloqueada",c.disabled);
   });
 }
@@ -832,6 +856,14 @@ function etiquetaDeCubo(clave){
   return new Intl.DateTimeFormat("es-AR",{day:"2-digit",month:"short"}).format(new Date(`${clave}T12:00:00`));
 }
 function renderChart(){
+  /* Si el filtro escondió una tarjeta, su serie tampoco tiene sentido: se
+     reemplaza por la primera visible que sí tenga serie diaria. */
+  const visibles=kpisVisibles();
+  state.selectedMetrics=state.selectedMetrics.filter(m=>visibles.includes(m));
+  if(!state.selectedMetrics.length){
+    const otro=visibles.find(m=>!SIN_SERIE.has(m));
+    if(otro) state.selectedMetrics=[otro];
+  }
   const metrics=state.selectedMetrics;
   if(!metrics.length){
     document.querySelector("#chart-title").textContent="Evolución diaria";
