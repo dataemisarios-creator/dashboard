@@ -1254,6 +1254,7 @@ function bloqueGrafico(extra, ajustes) {
     </span>`;
   return `<div class="grafico-extra">
       <div class="series-control-row">${serie(1, ajustes.m1)}${serie(2, ajustes.m2)}${tamano}</div>
+      <button type="button" class="ampliar" data-ampliar="${extra.id}">Ampliar</button>
       <svg id="grafico-${extra.id}" class="barras-extra" role="img" aria-label="${extra.titulo}"></svg>
     </div>`;
 }
@@ -1348,6 +1349,10 @@ function conectarExtras() {
     const [id, metrica] = casilla.dataset.valores.split(":");
     ajustesDe(id).valores[metrica] = casilla.checked;
     renderAdditionalModules();
+  }));
+  document.querySelectorAll("[data-ampliar]").forEach((b) => (b.onclick = () => {
+    const extra = DATOS.extras.find((e) => e.id === b.dataset.ampliar);
+    ampliarGrafico(document.querySelector(`#grafico-${b.dataset.ampliar}`), extra ? extra.titulo : "Gráfico");
   }));
   document.querySelectorAll("[data-texto]").forEach((b) => (b.onclick = () => {
     const [id, signo] = b.dataset.texto.split(":");
@@ -1666,6 +1671,29 @@ function recordarUltima(id) {
     body: JSON.stringify({ ultima: id, cliente: DATOS.cliente, plataforma: state.platform }) }).catch(() => {});
 }
 
+/* ── Ampliar un gráfico ──────────────────────────────────────────────────
+   En el teléfono el gráfico entra en 310 px y los números quedan ilegibles.
+   Se abre una copia del mismo dibujo a un ancho mayor, dentro de un cuadro
+   que se desliza: al ser SVG, agrandarlo no lo pixela. */
+function ampliarGrafico(svg, titulo) {
+  if (!svg) return;
+  const caja = document.querySelector("#zoom-lienzo");
+  const copia = svg.cloneNode(true);
+  copia.removeAttribute("id");
+  copia.removeAttribute("class");
+  const [, , ancho, alto] = (svg.getAttribute("viewBox") || "0 0 900 280").split(" ").map(Number);
+  /* Tres veces el ancho disponible: suficiente para leer sin perderse. */
+  const destino = Math.max(900, Math.round(window.innerWidth * 2.6));
+  copia.setAttribute("width", destino);
+  copia.setAttribute("height", Math.round((alto / ancho) * destino));
+  copia.style.display = "block";
+  caja.innerHTML = "";
+  caja.appendChild(copia);
+  document.querySelector("#zoom-titulo").textContent = titulo || "Gráfico";
+  document.querySelector("#zoom-dialog").showModal();
+}
+document.querySelector("#zoom-cerrar").onclick = () => document.querySelector("#zoom-dialog").close();
+
 function marcarFiltrosPendientes(consulta=false){ if(consulta) necesitaConsulta=true; if (window.PanelEmisarios) window.PanelEmisarios.filtrosPendientes(); }
 function renderAll(){syncPeriodControls();renderPlatformHeader();renderObjectives();renderCampaigns();renderKpis();renderChart();renderColumnOptions();renderTable();renderAdditionalModules();}
 function bindPopover(trigger,pop){const t=document.querySelector(trigger),p=document.querySelector(pop);t.onclick=e=>{e.stopPropagation();document.querySelectorAll(".popover").forEach(x=>x.hidden=true);p.hidden=!p.hidden};p.onclick=e=>e.stopPropagation()}
@@ -1739,6 +1767,8 @@ function elegirComparacion(){
   const custom=document.querySelector('input[name="comparison"][value="custom"]');
   custom.checked=true; elegirComparacion();
 });
+document.querySelector("#ampliar-evolucion").onclick=()=>
+  ampliarGrafico(document.querySelector("#evolution-chart"), document.querySelector("#chart-title").textContent);
 document.querySelectorAll("[data-granularity]").forEach(b=>b.onclick=()=>{state.granularity=b.dataset.granularity;document.querySelectorAll("[data-granularity]").forEach(x=>x.classList.toggle("active",x===b));renderChart()});
 document.querySelectorAll("[data-quick-period]").forEach(b=>b.onclick=()=>{ aplicarRapido(b.dataset.quickPeriod); });
 /* Marcar o desmarcar «Incluir hoy» vuelve a calcular el último período rápido

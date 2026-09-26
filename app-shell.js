@@ -53,11 +53,28 @@ $$("[data-view]").forEach((b) => (b.onclick = () => mostrarVista(b.dataset.view)
 $$("[data-platform]").forEach((b) => b.addEventListener("click", () => mostrarVista("dashboard")));
 
 /* ── Lateral: contraído y desplegado al pasar el mouse ───────────────── */
+/* En el teléfono el lateral no vive en pantalla: es un cajón que abre la
+   hamburguesa, con la marca y los accesos adentro. En escritorio el mismo
+   botón sigue contrayendo el panel, que es lo aprobado. */
+const enMovil = () => window.matchMedia("(max-width: 700px)").matches;
+function cerrarMenuMovil() { $("#app-shell").classList.remove("menu-abierto"); $("#velo-menu").hidden = true; }
 $("#sidebar-toggle").onclick = () => {
+  if (enMovil()) {
+    const abierto = $("#app-shell").classList.toggle("menu-abierto");
+    $("#velo-menu").hidden = !abierto;
+    $("#sidebar-toggle").setAttribute("aria-expanded", String(abierto));
+    return;
+  }
   const contraido = $("#app-shell").classList.toggle("collapsed");
   $("#sidebar-toggle").setAttribute("aria-pressed", String(contraido));
   aviso(contraido ? "Panel contraído. Pasá el mouse por encima para desplegarlo." : "Panel desplegado.");
 };
+$("#velo-menu").onclick = cerrarMenuMovil;
+/* Elegir a dónde ir cierra el cajón: si no, tapa lo que se acaba de abrir.
+   Va por delegación porque los clientes y las cuentas se dibujan después. */
+$("#sidebar").addEventListener("click", (e) => {
+  if (enMovil() && e.target.closest("[data-view], [data-platform], [data-cliente]")) cerrarMenuMovil();
+});
 
 /* El despliegue va también por JS: el :hover del CSS no alcanza cuando el
    puntero entra sobre un hijo y el panel está por encima del contenido. */

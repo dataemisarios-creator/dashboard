@@ -71,6 +71,7 @@
     </div>
 
     <div class="app-shell" id="app-shell">
+      <div class="velo-menu" id="velo-menu" hidden></div>
       <aside class="sidebar" id="sidebar" aria-label="Navegación principal">
         <div class="brand-row">
           <span class="brand-mark" aria-hidden="true">
@@ -256,7 +257,7 @@
           <section class="panel chart-panel" aria-labelledby="chart-title">
             <div class="panel-heading">
               <div><p class="eyebrow">EVOLUCIÓN</p><h2 id="chart-title">Evolución de Leads vs. CPL</h2></div>
-              <div class="granularity" role="group" aria-label="Agrupación temporal">
+              <button type="button" class="ampliar" id="ampliar-evolucion">Ampliar</button><div class="granularity" role="group" aria-label="Agrupación temporal">
                 <button type="button" class="active" data-granularity="day">Días</button>
                 <button type="button" data-granularity="week">Semanas</button>
                 <button type="button" data-granularity="month">Meses</button>
@@ -398,6 +399,12 @@
         </div>
         <div id="kpi-dialog-options" class="kpi-opciones"></div>
       </form>
+    </dialog>
+
+    <dialog id="zoom-dialog" class="zoom-dialog">
+      <div class="zoom-head"><strong id="zoom-titulo">Gráfico</strong><button type="button" id="zoom-cerrar" aria-label="Cerrar">×</button></div>
+      <p class="zoom-ayuda">Deslizá el gráfico para recorrerlo.</p>
+      <div class="zoom-lienzo" id="zoom-lienzo"></div>
     </dialog>
 
     <dialog id="view-dialog" class="kpi-dialog">
