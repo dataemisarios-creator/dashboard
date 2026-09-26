@@ -725,13 +725,21 @@ function renderObjectives() {
   document.querySelectorAll("[data-objective]").forEach(b=>b.onclick=()=>{
     state.objective=b.dataset.objective;
     document.querySelectorAll("[data-objective]").forEach(x=>x.classList.toggle("active",x===b));
+    // La lista de campañas y sus conteos dependen del objetivo elegido.
+    renderCampaigns();
     marcarFiltrosPendientes();
   });
 }
 const ESTADOS_CAMPANIA=[["todas","Todas"],["activa","Activas"],["pausada","En pausa"],["eliminada","Eliminadas"]];
 
+/* Las campañas que corresponden al objetivo elegido. Los dos filtros se
+   afectan entre sí: el objetivo acota la lista de campañas y sus conteos por
+   estado, y las campañas tildadas acotan los objetivos que se ofrecen. */
+const campaniasDelObjetivo = () => DATOS.campanias
+  .filter((c) => state.objective === TODOS_LOS_OBJETIVOS || !state.objective || c[2] === state.objective);
+
 function renderCampaigns() {
-  const list=DATOS.campanias;
+  const list=campaniasDelObjetivo();
   const filtro=document.querySelector("#campaign-states");
   if(filtro){
     filtro.innerHTML=ESTADOS_CAMPANIA.map(([id,texto])=>{
@@ -1715,8 +1723,10 @@ document.querySelector("#view-delete-confirm").onclick=async()=>{
 const avisarVista=(texto)=>{ if(window.PanelEmisarios&&window.PanelEmisarios.aviso) window.PanelEmisarios.aviso(texto); };
 document.querySelector("#restablecer-kpi").onclick=restablecerKpis;
 bindPopover("#period-trigger","#period-popover");bindPopover("#campaign-trigger","#campaign-popover");bindPopover("#comparison-trigger","#comparison-popover");bindPopover("#columns-trigger","#columns-popover");document.addEventListener("click",()=>document.querySelectorAll(".popover").forEach(x=>x.hidden=true));
-document.querySelector("#campaign-select-all").onclick=()=>{state.selectedCampaigns=new Set(DATOS.campanias.map(c=>c[0]));renderCampaigns();marcarFiltrosPendientes()};
-document.querySelector("#campaign-clear").onclick=()=>{state.selectedCampaigns.clear();renderCampaigns();marcarFiltrosPendientes()};
+/* Los dos atajos actúan sobre las campañas que el objetivo deja a la vista:
+   lo que no se está viendo no se toca. */
+document.querySelector("#campaign-select-all").onclick=()=>{campaniasDelObjetivo().forEach(c=>state.selectedCampaigns.add(c[0]));renderCampaigns();marcarFiltrosPendientes()};
+document.querySelector("#campaign-clear").onclick=()=>{campaniasDelObjetivo().forEach(c=>state.selectedCampaigns.delete(c[0]));renderCampaigns();marcarFiltrosPendientes()};
 document.querySelectorAll('input[name="comparison"]').forEach(i=>{const sync=e=>{if(e.target.value!=="custom")syncComparisonDates(e.target.value);elegirComparacion()};i.onchange=sync;i.onclick=sync});
 function elegirComparacion(){
   const input=document.querySelector('input[name="comparison"]:checked');
