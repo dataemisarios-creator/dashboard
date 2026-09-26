@@ -444,6 +444,12 @@ td.negative { color: var(--danger); }
 .primary-action.ghost { background: var(--violeta); }
 .primary-action:hover, .apply-button:hover { background: #241357; }
 .primary-action.ghost:hover { background: #8a55f5; }
+/* Dos acciones distintas piden dos pesos distintos: violeta oscuro la que
+   sobrescribe lo que ya existe, eléctrico la que crea algo nuevo. */
+.apply-button.ghost { background: var(--violeta); }
+.apply-button.ghost:hover { background: #8a55f5; }
+.apply-button:disabled { color: #9a8da9; background: #e6e2ec; box-shadow: none; cursor: default; }
+.apply-button:disabled:hover { background: #e6e2ec; }
 
 /* Acentos sobre claro: siempre violeta oscuro; el lila, de relleno. */
 .kpi-card.selected { border-color: var(--violeta-oscuro); }

@@ -566,7 +566,13 @@ function guardarKpis() { /* la persistencia vive en las vistas guardadas */ }
    volver desde una preferencia vieja. */
 function listaKpis() {
   const tipo=DATOS.tipo, p=currentPlatform();
-  if(!state.kpis[tipo]) state.kpis[tipo]=(p.defaults[state.objective]||p.metrics).slice(0,6);
+  /* La lista se revisa siempre contra los indicadores que esta plataforma
+     tiene: uno de otra plataforma no puede sobrevivir acá ni llegar a
+     guardarse en una vista. */
+  const guardada=state.kpis[tipo];
+  const limpia=Array.isArray(guardada)?guardada.filter(m=>p.metrics.includes(m)):null;
+  if(!limpia||!limpia.length) state.kpis[tipo]=(p.defaults[state.objective]||p.metrics).slice(0,6);
+  else if(limpia.length!==guardada.length) state.kpis[tipo]=limpia;
   return state.kpis[tipo];
 }
 
@@ -1344,7 +1350,9 @@ function capturarVista() {
     granularidad: state.granularity,
     kpis: [...listaKpis()],
     serie: [...state.selectedMetrics],
-    tipos: { ...state.chartTypes },
+    /* Los tipos de gráfico son de toda la sesión; en la vista sólo se guardan
+       los de esta plataforma. */
+    tipos: Object.fromEntries(Object.entries(state.chartTypes).filter(([m]) => currentPlatform().metrics.includes(m))),
     valores: { ...state.showValues },
     columnas: [...(state.tableMetrics[DATOS.tipo] || [])],
     expandidas: [...state.expandedMetrics],
@@ -1413,6 +1421,25 @@ function nombreSugerido() {
   return `${base} (${n})`;
 }
 
+/* ¿La pantalla sigue igual a como se guardó? Se compara el estado capturado
+   contra el guardado, ignorando lo que cambia solo: la página en la que quedó
+   cada tabla, el orden de las campañas y las fechas de comparación cuando se
+   calculan solas. */
+function estable(x) {
+  if (Array.isArray(x)) return `[${x.map(estable).join(",")}]`;
+  if (x && typeof x === "object")
+    return `{${Object.keys(x).sort().map((k) => `${k}:${estable(x[k])}`).join(",")}}`;
+  return JSON.stringify(x ?? null);
+}
+function comparable(estado) {
+  const c = JSON.parse(JSON.stringify(estado || {}));
+  if (c.extras) for (const k of Object.keys(c.extras)) delete c.extras[k].pagina;
+  if (Array.isArray(c.campanias)) c.campanias = [...c.campanias].sort();
+  if (c.comparacion !== "custom") { delete c.compararDesde; delete c.compararHasta; }
+  return estable(c);
+}
+const vistaSinCambios = (v) => !!v && comparable(capturarVista()) === comparable(v.estado);
+
 async function pedirVistas(opciones) {
   const r = await fetch("/api/vistas", { credentials: "same-origin", ...opciones });
   const cuerpo = await r.json().catch(() => ({}));
@@ -1437,8 +1464,13 @@ function pintarVistas() {
     </label>`;
   document.querySelector("#views-list").innerHTML=
     opcion("","Predeterminada")+lista.map(v=>opcion(v.id,v.nombre)).join("");
-  /* Actualizar y eliminar sólo tienen sentido parado en una vista guardada. */
-  document.querySelector("#view-update").hidden=!actual;
+  /* Actualizar y eliminar sólo tienen sentido parado en una vista guardada, y
+     actualizar sólo si además hay algo distinto que guardar. */
+  const actualizar=document.querySelector("#view-update");
+  actualizar.hidden=!actual;
+  const igual=vistaSinCambios(actual);
+  actualizar.disabled=igual;
+  actualizar.title=igual?"No hay cambios para guardar en esta vista":"Sobrescribe la vista con lo que ves ahora";
   document.querySelector("#view-delete").hidden=!actual;
   document.querySelectorAll('input[name="vista-elegida"]').forEach(r=>r.onchange=()=>abrirVista(r.value));
 }
@@ -1489,6 +1521,13 @@ function bindPopover(trigger,pop){const t=document.querySelector(trigger),p=docu
 document.querySelectorAll("[data-platform]").forEach(b=>b.onclick=()=>setPlatform(b.dataset.platform));
 document.querySelector("#agregar-kpi").onclick=openKpiDialog;
 bindPopover("#views-trigger","#views-popover");
+/* El estado del botón se recalcula al abrir el menú, que es el único momento
+   en que se ve: así no hay que vigilar cada cambio del panel. */
+{
+  const trigger=document.querySelector("#views-trigger");
+  const abrir=trigger.onclick;
+  trigger.onclick=(e)=>{ pintarVistas(); abrir(e); };
+}
 document.querySelector("#view-update").onclick=()=>{
   const actual=vistasDeAqui().find(v=>v.id===vistaAbierta);
   if(!actual) return;

@@ -227,15 +227,19 @@ async function versionesDeVistas(usuarioId) {
 export async function leerVistas(usuarioId) {
   if (!hayBlob()) return { ...VACIO };
   try {
-    const guardadas = await versionesDeVistas(usuarioId);
-    if (!guardadas.length) return { ...VACIO };
-    const respuesta = await fetch(guardadas[0].url, { cache: 'no-store' });
-    if (!respuesta.ok) return { ...VACIO };
-    const datos = JSON.parse(await descifrar(Buffer.from(await respuesta.arrayBuffer())));
-    return {
-      vistas: Array.isArray(datos?.vistas) ? datos.vistas : [],
-      ultima: datos?.ultima && typeof datos.ultima === 'object' ? datos.ultima : {},
-    };
+    /* El listado del almacén puede quedar un instante atrás de la última
+       escritura, así que si la versión más nueva ya no está se prueba con la
+       anterior antes de dar la lista por vacía. */
+    for (const blob of (await versionesDeVistas(usuarioId)).slice(0, 2)) {
+      const respuesta = await fetch(blob.url, { cache: 'no-store' });
+      if (!respuesta.ok) continue;
+      const datos = JSON.parse(await descifrar(Buffer.from(await respuesta.arrayBuffer())));
+      return {
+        vistas: Array.isArray(datos?.vistas) ? datos.vistas : [],
+        ultima: datos?.ultima && typeof datos.ultima === 'object' ? datos.ultima : {},
+      };
+    }
+    return { ...VACIO };
   } catch {
     return { ...VACIO };
   }
