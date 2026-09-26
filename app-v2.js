@@ -553,7 +553,8 @@ function tipoDe(cuentaId){ const c=(DATOS.cuentasCliente||[]).find(x=>x.id===cue
 function hayComparacion(){ return state.comparison !== "none" && !!DATOS.filasComparacion.length; }
 /* Variación real de cada indicador contra el período de comparación. */
 function deltaFor(metric){ const c=totalesComparacion(); if(!c) return null; const previo=c[metric]; if(!previo) return null; return (totalesActuales()[metric]/previo-1)*100; }
-const MAX_KPIS = 9;
+/* Doce entran en tres filas de cuatro con las tarjetas bajas. */
+const MAX_KPIS = 12;
 
 /* La disposición ya no se guarda sola: se guarda cuando la persona lo pide,
    con «Guardar vista». Así queda explícito que quiso dejarlo así, en lugar de
@@ -849,7 +850,7 @@ function sincronizarOpcionesKpi() {
   const puestos=currentMetrics();
   // Al llegar al tope no se puede sumar otro, y nunca se quita el último.
   const lleno=puestos.length>=MAX_KPIS, ultimo=puestos.length<=1;
-  const filtro=state.objective===TODOS_LOS_OBJETIVOS?"":` · con el filtro «${state.objective}»`;
+  const filtro=!state.objective||state.objective===TODOS_LOS_OBJETIVOS?"":` · con el filtro «${state.objective}»`;
   document.querySelector("#kpi-dialog-cuenta").textContent=`${puestos.length} de ${MAX_KPIS} en pantalla${filtro}`;
   document.querySelectorAll("[data-kpi]").forEach(c=>{
     const puesto=puestos.includes(c.dataset.kpi);
