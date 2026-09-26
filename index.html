@@ -222,6 +222,20 @@
                 </div>
               </div>
 
+              <div class="popover-wrap">
+                <button class="filter-control button-control" id="views-trigger" type="button" aria-expanded="false">
+                  <span>Vista</span><strong id="views-summary">Predeterminada</strong><b>⌄</b>
+                </button>
+                <div class="popover views-popover" id="views-popover" hidden>
+                  <div class="popover-title"><strong>Vistas guardadas</strong></div>
+                  <div id="views-list"></div>
+                  <div class="views-actions">
+                    <button type="button" class="apply-button" id="view-save">Guardar vista actual</button>
+                    <button type="button" class="link-action" id="view-delete" hidden>Eliminar esta vista</button>
+                  </div>
+                </div>
+              </div>
+
               <button class="filters-apply" id="apply-filters" type="button">APLICAR FILTROS</button>
             </div>
 
@@ -373,6 +387,29 @@
       <form method="dialog">
         <div class="dialog-head"><div><strong>Indicadores en pantalla</strong><small id="kpi-dialog-cuenta"></small></div><button value="cancel" aria-label="Cerrar">×</button></div>
         <div id="kpi-dialog-options" class="kpi-opciones"></div>
+      </form>
+    </dialog>
+
+    <dialog id="view-dialog" class="kpi-dialog">
+      <form method="dialog" class="dialog-body">
+        <div class="dialog-head"><div><strong>Guardar vista</strong><small>Queda guardada para tu usuario en esta cuenta.</small></div><button value="cancel" aria-label="Cerrar">×</button></div>
+        <label class="campo">Nombre<input id="view-name" type="text" maxlength="60" /></label>
+        <p class="form-note" id="view-dialog-nota"></p>
+        <div class="dialog-actions">
+          <button type="button" class="secondary-action" id="view-cancel">Cancelar</button>
+          <button type="button" class="apply-button" id="view-confirm">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="view-delete-dialog" class="kpi-dialog">
+      <form method="dialog" class="dialog-body">
+        <div class="dialog-head"><strong>Eliminar vista</strong><button value="cancel" aria-label="Cerrar">×</button></div>
+        <p class="form-note" id="view-delete-texto"></p>
+        <div class="dialog-actions">
+          <button type="button" class="secondary-action" id="view-delete-cancel">No, conservarla</button>
+          <button type="button" class="apply-button peligro" id="view-delete-confirm">Sí, eliminar</button>
+        </div>
       </form>
     </dialog>
 

@@ -209,6 +209,52 @@ export async function guardarUsuarios(lista) {
   if (aBorrar.length) await del(aBorrar).catch(() => {});
 }
 
+/* ──────────────────────────────────────────────── vistas guardadas */
+
+/* Las vistas son configuración de pantalla, no datos del negocio, pero viven
+   del lado del servidor para que sigan a la persona y no a la computadora.
+   Van en un archivo por usuario y no dentro de la lista de usuarios: si dos
+   personas guardaran una vista a la vez sobre el mismo archivo, una pisaría
+   los permisos de la otra. */
+const PREFIJO_VISTAS = 'vistas/';
+const VACIO = { vistas: [], ultima: {} };
+
+async function versionesDeVistas(usuarioId) {
+  const { blobs } = await list({ prefix: `${PREFIJO_VISTAS}${usuarioId}-` });
+  return blobs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+}
+
+export async function leerVistas(usuarioId) {
+  if (!hayBlob()) return { ...VACIO };
+  try {
+    const guardadas = await versionesDeVistas(usuarioId);
+    if (!guardadas.length) return { ...VACIO };
+    const respuesta = await fetch(guardadas[0].url, { cache: 'no-store' });
+    if (!respuesta.ok) return { ...VACIO };
+    const datos = JSON.parse(await descifrar(Buffer.from(await respuesta.arrayBuffer())));
+    return {
+      vistas: Array.isArray(datos?.vistas) ? datos.vistas : [],
+      ultima: datos?.ultima && typeof datos.ultima === 'object' ? datos.ultima : {},
+    };
+  } catch {
+    return { ...VACIO };
+  }
+}
+
+export async function guardarVistas(usuarioId, datos) {
+  if (!hayBlob()) throw new Error('No hay almacenamiento conectado para guardar las vistas.');
+  const viejas = await versionesDeVistas(usuarioId);
+  await put(`${PREFIJO_VISTAS}${usuarioId}-${Date.now()}.json`, await cifrar(JSON.stringify(datos)), {
+    access: 'public',
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    contentType: 'application/octet-stream',
+    cacheControlMaxAge: 0,
+  });
+  const aBorrar = viejas.slice(1).map((b) => b.url);
+  if (aBorrar.length) await del(aBorrar).catch(() => {});
+}
+
 /* ────────────────────────────────────────────────────────── permisos */
 
 /* El acceso se da por cuenta y por plataforma: cada usuario guarda una lista de

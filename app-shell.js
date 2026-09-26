@@ -141,6 +141,8 @@ botonFiltros.onclick = () => {
 filtrosAplicados();
 window.PanelEmisarios = {
   filtrosPendientes,
+  filtrosAplicados,
+  aviso,
   /* Quién está adentro: el panel lo usa para guardar la disposición de sus
      tarjetas sin mezclarla con la de otra persona en la misma computadora. */
   usuario: () => (sesion ? sesion.id : null),

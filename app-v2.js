@@ -544,20 +544,10 @@ function hayComparacion(){ return state.comparison !== "none" && !!DATOS.filasCo
 function deltaFor(metric){ const c=totalesComparacion(); if(!c) return null; const previo=c[metric]; if(!previo) return null; return (totalesActuales()[metric]/previo-1)*100; }
 const MAX_KPIS = 9;
 
-/* La disposición de las tarjetas es del usuario, así que sobrevive a recargar
-   la página. Se guarda en el navegador y con la clave de cada persona, para
-   que dos usuarios de la misma computadora no se pisen. No se guarda en el
-   servidor: es una preferencia de pantalla, no un dato del negocio.
-   Todo va entre try porque en una ventana privada el acceso puede fallar, y
-   el panel tiene que funcionar igual. */
-const CLAVE_KPIS = "emisarios.kpis";
-const claveDeKpis = () => `${CLAVE_KPIS}.${(window.PanelEmisarios && window.PanelEmisarios.usuario()) || "anon"}`;
-function kpisGuardados() {
-  try { return JSON.parse(localStorage.getItem(claveDeKpis())) || {}; } catch (e) { return {}; }
-}
-function guardarKpis() {
-  try { localStorage.setItem(claveDeKpis(), JSON.stringify(state.kpis)); } catch (e) { /* sin almacenamiento */ }
-}
+/* La disposición ya no se guarda sola: se guarda cuando la persona lo pide,
+   con «Guardar vista». Así queda explícito que quiso dejarlo así, en lugar de
+   arrastrar sin querer un cambio de paso hasta la próxima sesión. */
+function guardarKpis() { /* la persistencia vive en las vistas guardadas */ }
 
 /* La primera vez que se entra a una plataforma se toma lo que dejó el usuario
    y, si no dejó nada, los seis de siempre. Lo guardado se revisa contra los
@@ -565,10 +555,7 @@ function guardarKpis() {
    volver desde una preferencia vieja. */
 function listaKpis() {
   const tipo=DATOS.tipo, p=currentPlatform();
-  if(!state.kpis[tipo]){
-    const guardada=(kpisGuardados()[tipo]||[]).filter(m=>p.metrics.includes(m));
-    state.kpis[tipo]=guardada.length?guardada.slice(0,MAX_KPIS):(p.defaults[state.objective]||p.metrics).slice(0,6);
-  }
+  if(!state.kpis[tipo]) state.kpis[tipo]=(p.defaults[state.objective]||p.metrics).slice(0,6);
   return state.kpis[tipo];
 }
 
@@ -659,7 +646,16 @@ function setPlatform(id) {
   state.selectedMetrics=listaKpis().filter(m=>!SIN_SERIE.has(m)).slice(0,2);
   state.chartTypes[state.selectedMetrics[0]]="bar"; state.chartTypes[state.selectedMetrics[1]]="line";
   state.expandedMetrics=new Set(state.tableMetrics[DATOS.tipo]||[]);
+  /* Si la persona dejó una vista abierta en esta cuenta, se abre esa; si no,
+     la de fábrica. Nada se guarda solo: si nunca guardó, siempre la de
+     fábrica. */
+  vistaAbierta=null;
+  const ultima=VISTAS_GUARDADAS.ultima[claveDeVista()];
+  const guardada=ultima && VISTAS_GUARDADAS.vistas.find(v=>v.id===ultima && v.cliente===DATOS.cliente && v.plataforma===id);
+  if(guardada) aplicarVista(guardada);
+  pintarVistas();
   cargarDatos();
+  if(window.PanelEmisarios) window.PanelEmisarios.filtrosAplicados();
 }
 
 function renderPlatformHeader() {
@@ -1283,12 +1279,194 @@ function renderAdditionalModules(){
 }
 function renderReelsTable(){const reels=[["Reel lanzamiento","1 sep 2026","12.400","4,8%","18.200","310","1.540","48"],["Test drive","6 sep 2026","10.900","5,2%","15.600","280","1.320","39"],["Detalle interior","12 sep 2026","8.700","4,1%","11.900","190","980","27"]];const labels=["Contenido","Fecha","Alcance","Engagement","Visualizaciones","Guardados","Me gusta","Comentarios"];return `<section class="panel"><p class="eyebrow">CONTENIDO</p><h2>Reels publicados</h2><div class="table-scroll"><table class="module-table reels-table"><tbody><tr><th>Vista previa</th>${reels.map(()=>`<td><div class="placeholder-media">Sin imagen</div></td>`).join("")}</tr>${labels.map((l,i)=>`<tr><th>${l}</th>${reels.map(r=>`<td>${r[i]}</td>`).join("")}</tr>`).join("")}</tbody></table></div></section>`}
 
+/* ── Vistas guardadas ────────────────────────────────────────────────────
+   Una vista es la organización del panel para un cliente y una plataforma:
+   qué tarjetas, en qué orden, qué hay en el gráfico y con qué filtros. Se
+   guarda contra el usuario, del lado del servidor, y sólo cuando la persona
+   lo pide: nada se guarda solo, así queda explícito que quiso dejarlo así. */
+
+const NOMBRE_RAPIDO = { today:"Hoy", yesterday:"Ayer", last7:"Últimos 7 días", last14:"Últimos 14 días", thisMonth:"Este mes", lastMonth:"El mes pasado" };
+let VISTAS_GUARDADAS = { vistas: [], ultima: {} };
+let vistaAbierta = null;
+const claveDeVista = () => `${DATOS.cliente}:${state.platform}`;
+const vistasDeAqui = () => VISTAS_GUARDADAS.vistas.filter(v => v.cliente === DATOS.cliente && v.plataforma === state.platform);
+
+/* El período se guarda como regla y no como fechas cuando salió de un botón
+   rápido: si no, «Este mes» quedaría clavado en el mes en que se guardó. */
+function capturarVista() {
+  return {
+    version: 1,
+    objetivo: state.objective,
+    estadoCampanias: state.estadoCampanias,
+    campanias: [...state.selectedCampaigns],
+    rapido: state.rapido || null,
+    desde: state.rapido ? null : state.start,
+    hasta: state.rapido ? null : state.end,
+    incluyeHoy: incluyeHoy(),
+    comparacion: state.comparison,
+    compararDesde: document.querySelector("#compare-start").value,
+    compararHasta: document.querySelector("#compare-end").value,
+    granularidad: state.granularity,
+    kpis: [...listaKpis()],
+    serie: [...state.selectedMetrics],
+    tipos: { ...state.chartTypes },
+    valores: { ...state.showValues },
+    columnas: [...(state.tableMetrics[DATOS.tipo] || [])],
+    expandidas: [...state.expandedMetrics],
+    extras: JSON.parse(JSON.stringify(estadoExtra)),
+  };
+}
+
+/* Al aplicar se ignora lo que ya no existe: un indicador que sacamos del
+   código o una campaña que dejó de estar. Un indicador que hoy da cero no es
+   ese caso y se muestra igual, que es lo que se guardó. */
+function aplicarVista(v) {
+  if (!v) return false;
+  const e = v.estado || {};
+  const p = platforms[DATOS.tipo] || platforms.meta;
+  const validos = (lista) => (Array.isArray(lista) ? lista.filter(m => p.metrics.includes(m)) : []);
+
+  const kpis = validos(e.kpis);
+  if (kpis.length) state.kpis[DATOS.tipo] = kpis;
+  const serie = validos(e.serie);
+  if (serie.length) state.selectedMetrics = serie.slice(0, 2);
+  if (e.tipos) state.chartTypes = { ...state.chartTypes, ...e.tipos };
+  state.showValues = e.valores || {};
+  const columnas = validos(e.columnas);
+  state.tableMetrics[DATOS.tipo] = columnas;
+  state.expandedMetrics = new Set(validos(e.expandidas));
+  if (e.granularidad) state.granularity = e.granularidad;
+  if (e.extras) for (const [id, ajustes] of Object.entries(e.extras)) estadoExtra[id] = { ...ajustesDe(id), ...ajustes };
+
+  state.objective = e.objetivo || TODOS_LOS_OBJETIVOS;
+  state.estadoCampanias = e.estadoCampanias || "todas";
+  if (Array.isArray(e.campanias) && e.campanias.length) state.selectedCampaigns = new Set(e.campanias);
+
+  const casilla = document.querySelector("#include-today");
+  if (casilla && typeof e.incluyeHoy === "boolean") casilla.checked = e.incluyeHoy;
+  if (e.rapido && NOMBRE_RAPIDO[e.rapido]) aplicarRapido(e.rapido);
+  else if (e.desde && e.hasta) {
+    state.rapido = null;
+    state.start = e.desde; state.end = e.hasta;
+    document.querySelectorAll("[data-quick-period]").forEach(x => x.classList.remove("active"));
+    syncPeriodControls();
+  }
+  if (e.comparacion) {
+    state.comparison = e.comparacion;
+    const radio = document.querySelector(`input[name="comparison"][value="${e.comparacion}"]`);
+    if (radio) { radio.checked = true; document.querySelector("#comparison-summary").textContent = radio.parentElement.textContent.trim(); }
+    if (e.compararDesde) document.querySelector("#compare-start").value = e.compararDesde;
+    if (e.compararHasta) document.querySelector("#compare-end").value = e.compararHasta;
+  }
+  vistaAbierta = v.id;
+  return true;
+}
+
+/* Un nombre que describa lo que se está viendo, para no tener que inventarlo:
+   «Búsqueda · Este mes». Se puede editar antes de guardar. */
+function nombreSugerido() {
+  const partes = [];
+  partes.push(state.objective && state.objective !== TODOS_LOS_OBJETIVOS ? state.objective : "Todos los objetivos");
+  partes.push(state.rapido ? NOMBRE_RAPIDO[state.rapido] : `${dateText(state.start)} a ${dateText(state.end)}`);
+  return partes.join(" · ");
+}
+
+async function pedirVistas(opciones) {
+  const r = await fetch("/api/vistas", { credentials: "same-origin", ...opciones });
+  const cuerpo = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(cuerpo.error || `El servidor respondió ${r.status}.`);
+  return cuerpo;
+}
+
+async function cargarVistas() {
+  try { VISTAS_GUARDADAS = await pedirVistas({}); } catch (e) { VISTAS_GUARDADAS = { vistas: [], ultima: {} }; }
+  pintarVistas();
+}
+
+function pintarVistas() {
+  const lista = vistasDeAqui();
+  const actual = lista.find(v => v.id === vistaAbierta);
+  document.querySelector("#views-summary").textContent = actual ? actual.nombre : "Predeterminada";
+  document.querySelector("#views-list").innerHTML = lista.length
+    ? lista.map(v => `<button type="button" class="view-option${v.id === vistaAbierta ? " activa" : ""}" data-vista="${v.id}">${v.nombre}</button>`).join("")
+    : '<p class="campaign-empty">Todavía no guardaste ninguna vista para esta cuenta.</p>';
+  // Eliminar sólo se ofrece estando dentro de una vista guardada.
+  document.querySelector("#view-delete").hidden = !actual;
+  document.querySelectorAll("[data-vista]").forEach(b => (b.onclick = () => abrirVista(b.dataset.vista)));
+}
+
+function abrirVista(id) {
+  const v = VISTAS_GUARDADAS.vistas.find(x => x.id === id);
+  if (!aplicarVista(v)) return;
+  document.querySelector("#views-popover").hidden = true;
+  recordarUltima(id);
+  pintarVistas();
+  cargarDatos();
+}
+
+function recordarUltima(id) {
+  VISTAS_GUARDADAS.ultima[claveDeVista()] = id;
+  pedirVistas({ method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ultima: id, cliente: DATOS.cliente, plataforma: state.platform }) }).catch(() => {});
+}
+
 function marcarFiltrosPendientes(consulta=false){ if(consulta) necesitaConsulta=true; if (window.PanelEmisarios) window.PanelEmisarios.filtrosPendientes(); }
 function renderAll(){syncPeriodControls();renderPlatformHeader();renderObjectives();renderCampaigns();renderKpis();renderChart();renderColumnOptions();renderTable();renderAdditionalModules();}
 function bindPopover(trigger,pop){const t=document.querySelector(trigger),p=document.querySelector(pop);t.onclick=e=>{e.stopPropagation();document.querySelectorAll(".popover").forEach(x=>x.hidden=true);p.hidden=!p.hidden};p.onclick=e=>e.stopPropagation()}
 
 document.querySelectorAll("[data-platform]").forEach(b=>b.onclick=()=>setPlatform(b.dataset.platform));
 document.querySelector("#agregar-kpi").onclick=openKpiDialog;
+bindPopover("#views-trigger","#views-popover");
+document.querySelector("#view-save").onclick=()=>{
+  const actual=vistasDeAqui().find(v=>v.id===vistaAbierta);
+  document.querySelector("#view-name").value=actual?actual.nombre:nombreSugerido();
+  document.querySelector("#view-dialog-nota").textContent=actual
+    ? `Si dejás el mismo nombre se actualiza «${actual.nombre}». Cambialo para guardar una vista nueva.`
+    : "Se guarda la organización del panel y los filtros de esta pantalla.";
+  document.querySelector("#views-popover").hidden=true;
+  document.querySelector("#view-dialog").showModal();
+};
+document.querySelector("#view-cancel").onclick=()=>document.querySelector("#view-dialog").close();
+document.querySelector("#view-confirm").onclick=async()=>{
+  const nombre=document.querySelector("#view-name").value.trim();
+  if(!nombre) return;
+  const actual=vistasDeAqui().find(v=>v.id===vistaAbierta);
+  /* Mismo nombre sobre una vista abierta es actualizar; nombre distinto crea
+     otra, que es lo que se espera al «guardar como». */
+  const id=actual && actual.nombre===nombre ? actual.id : null;
+  try{
+    const r=await pedirVistas({ method:"POST", headers:{"content-type":"application/json"},
+      body: JSON.stringify({ id, nombre, cliente: DATOS.cliente, plataforma: state.platform, estado: capturarVista() }) });
+    VISTAS_GUARDADAS={ vistas:r.vistas, ultima:r.ultima, leidas:true };
+    vistaAbierta=r.guardada;
+    pintarVistas();
+    avisarVista(`Vista «${nombre}» guardada.`);
+  }catch(e){ avisarVista(e.message); }
+  document.querySelector("#view-dialog").close();
+};
+document.querySelector("#view-delete").onclick=()=>{
+  const actual=vistasDeAqui().find(v=>v.id===vistaAbierta);
+  if(!actual) return;
+  document.querySelector("#view-delete-texto").textContent=`¿Seguro que querés eliminar la vista «${actual.nombre}»? No se puede deshacer.`;
+  document.querySelector("#views-popover").hidden=true;
+  document.querySelector("#view-delete-dialog").showModal();
+};
+document.querySelector("#view-delete-cancel").onclick=()=>document.querySelector("#view-delete-dialog").close();
+document.querySelector("#view-delete-confirm").onclick=async()=>{
+  const actual=vistasDeAqui().find(v=>v.id===vistaAbierta);
+  document.querySelector("#view-delete-dialog").close();
+  if(!actual) return;
+  try{
+    const r=await fetch(`/api/vistas?id=${encodeURIComponent(actual.id)}`,{ method:"DELETE", credentials:"same-origin" });
+    const cuerpo=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(cuerpo.error||`El servidor respondió ${r.status}.`);
+    VISTAS_GUARDADAS={ vistas:cuerpo.vistas, ultima:cuerpo.ultima, leidas:true };
+    vistaAbierta=null;
+    pintarVistas();
+    avisarVista(`Vista «${actual.nombre}» eliminada.`);
+  }catch(e){ avisarVista(e.message); }
+};
+const avisarVista=(texto)=>{ if(window.PanelEmisarios&&window.PanelEmisarios.aviso) window.PanelEmisarios.aviso(texto); };
 document.querySelector("#restablecer-kpi").onclick=restablecerKpis;
 bindPopover("#period-trigger","#period-popover");bindPopover("#campaign-trigger","#campaign-popover");bindPopover("#comparison-trigger","#comparison-popover");bindPopover("#columns-trigger","#columns-popover");document.addEventListener("click",()=>document.querySelectorAll(".popover").forEach(x=>x.hidden=true));
 document.querySelector("#campaign-select-all").onclick=()=>{state.selectedCampaigns=new Set(DATOS.campanias.map(c=>c[0]));renderCampaigns();marcarFiltrosPendientes()};
@@ -1331,10 +1509,11 @@ window.DatosEmisarios = {
        es instantáneo y no hace falta molestar a Windsor. */
     renderObjectives(); renderCampaigns(); renderKpis(); renderChart(); renderTable(); renderAdditionalModules();
   },
-  elegirCliente: (cliente, primera) => {
+  elegirCliente: async (cliente, primera) => {
     DATOS.cliente = cliente.id;
     DATOS.nombreCliente = cliente.nombre;
     DATOS.cuentasCliente = cliente.cuentas;
+    if (!VISTAS_GUARDADAS.leidas) { await cargarVistas(); VISTAS_GUARDADAS.leidas = true; }
     if (primera) setPlatform(primera.id); else cargarDatos();
   },
 };
