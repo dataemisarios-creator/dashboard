@@ -7,6 +7,7 @@ import {
 } from './_comun.js';
 
 const esAdmin = (sesion) => sesion.rol === 'Administrador';
+const SIN_ACCESO_A_USUARIOS = 'Gestionar accesos es potestad del administrador.';
 const activos = (lista) => lista.filter((u) => u.rol === 'Administrador' && u.activo !== false).length;
 
 export default async function handler(req, res) {
@@ -25,7 +26,7 @@ export default async function handler(req, res) {
   const cambioPropio =
     req.method === 'PUT' && req.body?.id === sesion.id && req.body?.soloClave;
   if (!esAdmin(sesion) && !cambioPropio)
-    return res.status(403).json({ error: 'Hace falta perfil de administrador.' });
+    return res.status(403).json({ error: SIN_ACCESO_A_USUARIOS });
 
   if (req.method === 'POST') {
     const { usuario, nombre, correo, rol, alcance, cuentas, clave, activo = true } = req.body || {};

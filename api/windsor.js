@@ -43,10 +43,23 @@ export default async function handler(req, res) {
 
     /* Las tres consultas van en paralelo: encadenadas, una vista tardaba más de
        diez segundos. */
+    /* Cuando la cuenta tiene su propio conector se consulta ahí, y además se
+       verifica el perfil que vuelve en la fila: el filtro por cuenta es de
+       Windsor, la comprobación es nuestra. */
+    const delPerfil = (filas) => filas.filter((x) => !cuenta.perfil || x.account_name === cuenta.perfil);
+    const propio = (campos) => consultar(cuenta.conector, { date_from: desde, date_to: hasta, select_accounts: cuenta.cuenta, fields: campos });
     const pedirFilas = cuenta.conector
-      ? consultar(cuenta.conector, comunes).then((f) =>
-          f.filter((x) => !cuenta.perfil || x.account_name === cuenta.perfil))
+      ? propio(cuenta.campos).then(delPerfil)
       : consultar('all', { ...comunes, select_accounts: cuenta.cuenta });
+
+    /* Seguidores y publicaciones son el valor de hoy, no una serie. */
+    const pedirFoto = cuenta.foto ? propio(cuenta.foto).then(delPerfil).catch(() => []) : Promise.resolve([]);
+    /* Altas y bajas de seguidores: Windsor rechaza la consulta si el rango pasa
+       de los últimos 30 días, así que este pedido puede volver vacío. */
+    const pedirSeguidores = cuenta.seguidores ? propio(cuenta.seguidores).then(delPerfil).catch(() => []) : Promise.resolve([]);
+    /* Lo publicado en el período, para contar reels y posteos y para la tabla
+       de contenido. */
+    const pedirContenido = cuenta.contenido ? propio(cuenta.contenido).then(delPerfil).catch(() => []) : Promise.resolve([]);
 
     /* Desglose por conjunto y por anuncio: consulta aparte y sin fecha, porque
        al nivel de anuncio las filas se multiplican y la serie diaria no las
@@ -63,8 +76,29 @@ export default async function handler(req, res) {
           .catch(() => [])
       : Promise.resolve([]);
 
-    const [filas, desglose, sueltas] = await Promise.all([pedirFilas, pedirDesglose, pedirAlcance]);
+    /* Desgloses que Google sólo entrega en informes separados: palabras clave,
+       términos de búsqueda, ciudades y provincias. Van sin fecha, porque
+       cruzarlos con el día multiplica las filas por miles. */
+    const pedirExtras = (cuenta.extras || []).map((e) =>
+      consultar('all', { date_from: desde, date_to: hasta, select_accounts: cuenta.cuenta, fields: e.campos })
+        .then((filas) => ({ id: e.id, titulo: e.titulo, columna: e.columna, campo: e.campo, estado: e.estado || null, filas }))
+        .catch(() => null));
+
+    const [filas, desglose, sueltas, fotos, seguidores, contenido, ...extras] =
+      await Promise.all([pedirFilas, pedirDesglose, pedirAlcance, pedirFoto, pedirSeguidores, pedirContenido, ...pedirExtras]);
     const alcance = sueltas.reduce((acc, f) => acc + (Number(f.reach) || 0), 0) || null;
+
+    /* Las altas y bajas llegan en su propia consulta: se pegan al día que les
+       corresponde para que el panel siga leyendo una fila por fecha. */
+    if (seguidores.length) {
+      const porFecha = new Map(seguidores.map((f) => [f.date, f]));
+      for (const fila of filas) {
+        const s = porFecha.get(fila.date);
+        if (!s) continue;
+        fila.follower_count = s.follower_count;
+        fila.follows_and_unfollows = s.follows_and_unfollows;
+      }
+    }
 
     res.setHeader('Cache-Control', 'private, max-age=0, no-store');
     return res.status(200).json({
@@ -73,7 +107,11 @@ export default async function handler(req, res) {
       hasta,
       alcance,
       niveles: cuenta.niveles || [],
+      nivelesEstado: cuenta.nivelesEstado || [],
       desglose,
+      foto: fotos[0] || null,
+      contenido,
+      extras: extras.filter(Boolean),
       filas,
       consultadoEn: new Date().toISOString(),
     });

@@ -34,8 +34,12 @@ const platforms = {
   },
   instagram: {
     title: "Instagram orgánico", description: "Audiencia, publicaciones, alcance e interacción orgánica.", paid: false,
-    metrics: ["followers","balance","reels","feedPosts","stories","reach","interactions","shares","saves","likes","comments","newFollowers","unfollows"],
-    defaults: { organic: ["followers","balance","reels","feedPosts","stories","reach"] }, objectives: { organic: "Orgánico" }, campaigns: []
+    metrics: ["followers","newFollowers","unfollows","balance","reach","views","interactions","likes","comments","shares","saves","reels","feedPosts"],
+    defaults: { organic: ["followers","newFollowers","balance","reach","views","interactions"] }, objectives: { organic: "Orgánico" }, campaigns: [],
+    /* Instagram informa el alcance de cada día, no el del período: sumarlo
+       cuenta dos veces a quien vio contenido dos días distintos. Se dice en la
+       etiqueta en lugar de hacerlo pasar por alcance único. */
+    etiquetas: { reach: "Alcance (suma diaria)", views: "Visualizaciones" }
   },
   tiktokOrganic: {
     title: "TikTok orgánico", description: "Publicaciones, visualizaciones e interacción orgánica en TikTok.", paid: false,
@@ -45,7 +49,7 @@ const platforms = {
 };
 
 const state = {
-  platform: "meta", objective: "leads", rapido: "thisMonth", start: "", end: "", comparison: "previous", granularity: "day",
+  platform: "meta", objective: "__todos", estadoCampanias: "todas", rapido: "thisMonth", start: "", end: "", comparison: "previous", granularity: "day",
   selectedCampaigns: new Set(["meta-1","meta-2","meta-3"]), selectedMetrics: ["conversions","cpa"], chartTypes: { conversions: "bar", cpa: "line" },
   customKpis: { meta: [], google: [], tiktok: [], instagram: [], tiktokOrganic: [] },
   networks: new Set(["instagram","facebook"]),
@@ -64,14 +68,40 @@ const CAMPOS = {
   meta: { spend:"spend", impressions:"impressions", clicks:"clicks", conversions:"actions_offsite_conversion_fb_pixel_custom", instagramProfileVisits:"instagram_profile_visits", instagramFollows:"instagram_profile_follow" },
   google: { spend:"spend", impressions:"impressions", clicks:"clicks", conversions:"conversions", views:"video_trueview_views" },
   tiktok: { spend:"spend", impressions:"impressions", clicks:"clicks", videoViews:"play_duration_6s", paidFollowers:"follows", tiktokProfileVisits:"profile_visits", shares:"shares" },
-  instagram: { followers:"profile_followers_count", feedPosts:"profile_media_count" },
+  instagram: { reach:"reach", views:"views", interactions:"total_interactions", likes:"likes", comments:"comments", shares:"shares", saves:"saves", newFollowers:"follower_count" },
   tiktokOrganic: {},
 };
 /* Estos no se suman: son una foto del momento de la consulta. */
 const FOTO = new Set(["followers", "feedPosts"]);
+/* Estos no tienen serie diaria: son una foto del día de la consulta o un
+   recuento de todo el período, así que no se pueden dibujar por día. La
+   tarjeta se muestra igual, pero no se puede llevar al gráfico. */
+const SIN_SERIE = new Set(["followers", "feedPosts", "reels"]);
+/* Los que llegan en la consulta de foto, que no tiene fecha. */
+const CAMPOS_FOTO = { instagram: { followers: "followers_count" } };
+/* Cada tipo de publicación de Instagram, tal como lo nombra la API. */
+const CONTENIDO_INSTAGRAM = { reels: "REEL", feedPosts: "FEED" };
 
 const OBJETIVOS_META = { OUTCOME_LEADS:"Leads", OUTCOME_TRAFFIC:"Tráfico", OUTCOME_SALES:"Ventas", OUTCOME_ENGAGEMENT:"Interacción", OUTCOME_AWARENESS:"Reconocimiento", OUTCOME_APP_PROMOTION:"Aplicación" };
+/* Cada plataforma nombra el estado a su manera: ACTIVE en Meta, ENABLED en
+   Google, CAMPAIGN_STATUS_ENABLE en TikTok. Se reducen a dos, que es lo que
+   se muestra y lo que se filtra. */
+function estadoDeFila(fila, campo = "campaign_status") {
+  const crudo = String(fila[campo] || "").toUpperCase();
+  if (!crudo) return "desconocido";
+  /* El orden importa: AD_STATUS_DELETE también contiene otras palabras, y
+     DISABLE no contiene ENABLE, así que se descarta lo eliminado primero. */
+  if (crudo.includes("REMOVE") || crudo.includes("DELETE") || crudo.includes("ARCHIV")) return "eliminada";
+  if (crudo.includes("ACTIVE") || crudo.includes("ENABLE") || crudo.includes("DELIVERY_OK")) return "activa";
+  return "pausada";
+}
+
+const TITULO_ESTADO = { activa: "Activa", pausada: "En pausa", eliminada: "Eliminada", desconocido: "Estado no informado" };
+const punto = (estado) => (estado ? `<i class="estado-punto estado-${estado}" title="${TITULO_ESTADO[estado]}"></i>` : "");
+
 const OBJETIVOS_GOOGLE = { SEARCH:"Búsqueda", VIDEO:"Video", DISPLAY:"Display", PERFORMANCE_MAX:"Performance Max", SHOPPING:"Shopping", DEMAND_GEN:"Demand Gen" };
+
+const TODOS_LOS_OBJETIVOS = "__todos";
 
 const DATOS = {
   cliente: "geely",
@@ -82,7 +112,13 @@ const DATOS = {
   filasComparacion: [],
   desglose: [],
   desgloseComparacion: [],
+  foto: null,
+  fotoComparacion: null,
+  contenido: [],
+  contenidoComparacion: [],
+  extras: [],
   niveles: [],
+  nivelesEstado: [],
   alcance: null,
   alcanceComparacion: null,
   moneda: null,
@@ -103,7 +139,7 @@ function objetivoDeFila(plataforma, fila) {
 
 /** Totales de un conjunto de filas. Las tasas se calculan sobre los totales del
     período, nunca promediando tasas diarias. */
-function totalizar(plataforma, filas, alcance) {
+function totalizar(plataforma, filas, alcance, extra = {}) {
   const mapa = CAMPOS[plataforma] || {};
   const t = {};
   for (const [indicador, campo] of Object.entries(mapa)) {
@@ -122,21 +158,54 @@ function totalizar(plataforma, filas, alcance) {
   t.cpa = tasa(t.spend, t.conversions);
   t.cpv = tasa(t.spend, t.views || t.videoViews);
   t.frequency = tasa(t.impressions, t.reach);
+
+  /* Seguidores totales y publicaciones son el valor de hoy: llegan en una
+     consulta sin fecha y no se suman. */
+  for (const [indicador, campo] of Object.entries(CAMPOS_FOTO[plataforma] || {}))
+    if (extra.foto && extra.foto[campo] !== null && extra.foto[campo] !== undefined) t[indicador] = num(extra.foto[campo]);
+
+  /* Reels y posteos se cuentan sobre lo publicado dentro del período. */
+  if (extra.contenido)
+    for (const [indicador, tipo] of Object.entries(CONTENIDO_INSTAGRAM))
+      t[indicador] = extra.contenido.filter((m) => String(m.media_product_type || "").toUpperCase().includes(tipo)).length;
+
+  /* Instagram informa altas más bajas en un solo número, así que la baja es la
+     diferencia con las altas. Sin ese dato no se inventa un cero: queda nulo. */
+  if (plataforma === "instagram") {
+    const informadas = filas.some((f) => f.follower_count !== null && f.follower_count !== undefined);
+    const movimientos = filas.reduce((suma, f) => suma + num(f.follows_and_unfollows), 0);
+    if (!informadas) t.newFollowers = null;
+    t.unfollows = informadas && movimientos ? Math.max(0, movimientos - t.newFollowers) : null;
+    t.balance = t.unfollows === null ? null : t.newFollowers - t.unfollows;
+  }
   return t;
 }
 
-const filasElegidas = (filas) =>
-  filas.filter((f) => !f.campaign || state.selectedCampaigns.has(f.campaign));
+/* Tres filtros se cruzan sobre la misma lista: las campañas tildadas arriba,
+   el objetivo elegido y el estado. Los tres son locales, sobre las filas que ya
+   están cargadas, así que se aplican al instante y sin volver a consultar. */
+function campaniasEnJuego() {
+  return new Set(DATOS.campanias
+    .filter((c) => state.selectedCampaigns.has(c[0]))
+    .filter((c) => state.objective === TODOS_LOS_OBJETIVOS || c[2] === state.objective)
+    .filter((c) => state.estadoCampanias === "todas" || c[3] === state.estadoCampanias)
+    .map((c) => c[0]));
+}
+
+const filasElegidas = (filas) => {
+  const activas = campaniasEnJuego();
+  return filas.filter((f) => !f.campaign || activas.has(f.campaign));
+};
 
 function totalesActuales() {
   // El alcance único es de toda la cuenta: con un filtro de campaña no aplica.
-  const todas = state.selectedCampaigns.size === DATOS.campanias.length;
-  return totalizar(DATOS.tipo, filasElegidas(DATOS.filas), todas ? DATOS.alcance : null);
+  const todas = campaniasEnJuego().size === DATOS.campanias.length;
+  return totalizar(DATOS.tipo, filasElegidas(DATOS.filas), todas ? DATOS.alcance : null, { foto: DATOS.foto, contenido: DATOS.contenido });
 }
 function totalesComparacion() {
   if (state.comparison === "none" || !DATOS.filasComparacion.length) return null;
-  const todas = state.selectedCampaigns.size === DATOS.campanias.length;
-  return totalizar(DATOS.tipo, filasElegidas(DATOS.filasComparacion), todas ? DATOS.alcanceComparacion : null);
+  const todas = campaniasEnJuego().size === DATOS.campanias.length;
+  return totalizar(DATOS.tipo, filasElegidas(DATOS.filasComparacion), todas ? DATOS.alcanceComparacion : null, { foto: DATOS.fotoComparacion, contenido: DATOS.contenidoComparacion });
 }
 
 /** Rango del período de comparación, con la misma regla que el selector. */
@@ -169,20 +238,31 @@ async function cargarDatos() {
   const vigente = () => pedido === ultimoPedido;
   DATOS.cargando = true;
   DATOS.error = null;
+  progreso.mostrado = 0; progreso.objetivo = 0;
+  fijarProgreso(4, 45);
   pintarEstadoDatos();
   try {
     /* El período pedido y el de comparación se consultan a la vez: uno detrás
        del otro duplicaba la espera. */
     const conComparacion = state.comparison !== "none";
+    /* Cada consulta que vuelve empuja el porcentaje: son los únicos puntos en
+       los que sabemos algo cierto sobre el avance. */
+    let hechas = 0;
+    const total = conComparacion ? 2 : 1;
+    const anotar = (r) => { hechas++; fijarProgreso(40 + (hechas / total) * 45, 60 + (hechas / total) * 35); return r; };
     const [actual, previo] = await Promise.all([
-      pedir(state.platform, state.start, state.end),
-      conComparacion ? pedir(state.platform, ...rangoComparacion()).catch(() => null) : Promise.resolve(null),
+      pedir(state.platform, state.start, state.end).then(anotar),
+      conComparacion ? pedir(state.platform, ...rangoComparacion()).then(anotar).catch(() => null) : Promise.resolve(null),
     ]);
     if (!vigente()) return;
 
     DATOS.filas = actual.filas || [];
     DATOS.desglose = actual.desglose || [];
+    DATOS.extras = actual.extras || [];
+    DATOS.foto = actual.foto || null;
+    DATOS.contenido = actual.contenido || [];
     DATOS.niveles = actual.niveles || [];
+    DATOS.nivelesEstado = actual.nivelesEstado || [];
     DATOS.alcance = actual.alcance;
     DATOS.moneda = actual.cuenta?.moneda || null;
     DATOS.consultadoEn = actual.consultadoEn;
@@ -190,21 +270,29 @@ async function cargarDatos() {
     DATOS.filasComparacion = previo ? previo.filas || [] : [];
     DATOS.desgloseComparacion = previo ? previo.desglose || [] : [];
     DATOS.alcanceComparacion = previo ? previo.alcance : null;
+    DATOS.fotoComparacion = previo ? previo.foto || null : null;
+    DATOS.contenidoComparacion = previo ? previo.contenido || [] : [];
 
     // Las campañas y los objetivos salen de lo que devolvió la cuenta.
     const vistas = new Map();
     for (const f of DATOS.filas) {
       if (!f.campaign) continue;
-      if (!vistas.has(f.campaign)) vistas.set(f.campaign, objetivoDeFila(DATOS.tipo, f));
+      /* El estado puede cambiar dentro del período: vale el de la fila más
+         reciente, que es el estado con el que la campaña quedó. */
+      vistas.set(f.campaign, { objetivo: objetivoDeFila(DATOS.tipo, f), estado: estadoDeFila(f) });
     }
-    DATOS.campanias = [...vistas.entries()].map(([nombre, objetivo]) => [nombre, nombre, objetivo]);
+    DATOS.campanias = [...vistas.entries()].map(([nombre, x]) => [nombre, nombre, x.objetivo, x.estado]);
     DATOS.objetivos = {};
     for (const [, , objetivo] of DATOS.campanias) DATOS.objetivos[objetivo] = objetivo;
 
     const previas = state.selectedCampaigns;
     const siguen = DATOS.campanias.filter((c) => previas.has(c[0])).map((c) => c[0]);
     state.selectedCampaigns = new Set(siguen.length ? siguen : DATOS.campanias.map((c) => c[0]));
+    // Un objetivo que ya no existe en esta cuenta vuelve a «todos».
+    if (state.objective !== TODOS_LOS_OBJETIVOS && !DATOS.campanias.some((c) => c[2] === state.objective))
+      state.objective = TODOS_LOS_OBJETIVOS;
 
+    fijarProgreso(100, 100);
     DATOS.cargando = false;
     avisarConexion(true);
     renderAll();
@@ -225,10 +313,78 @@ function avisarConexion(viva) {
 }
 
 /** Cartel sobre la vista: consultando, error, o cuenta sin datos. */
+/* Frases de la cortina de carga. Van en orden y no al azar: así no se repite
+   la misma dos veces seguidas en una espera corta. */
+const FRASES_CARGA = [
+  "Estamos escarbando en los datos",
+  "Despertando al servidor, que estaba en modo siesta",
+  "Convenciendo a la API de que somos gente de bien",
+  "Explicándole a Google que sí, que somos nosotros",
+  "Negociando con el límite de consultas por minuto",
+  "Encontramos oro, pero viene sin documentación",
+  "Traduciendo del JSON al castellano",
+  "Esperando que TikTok termine de bailar",
+  "Contando los clics de a uno, como corresponde",
+  "Preguntándole a la nube; la nube consulta con otra nube",
+  "Cargando la barra de carga",
+  "Meta dice que ya casi, pero lo viene diciendo hace rato",
+  "Alineando husos horarios, monedas y egos",
+  "Aplicando inteligencia artificial, mayormente decorativa",
+  "Bajando los datos a 56k, por nostalgia",
+  "Buscando el dato en la última pestaña que quedó abierta",
+];
+
+let frasesTimer = null;
+let cortinaTimer = null;
+let pctTimer = null;
+
+/* El porcentaje es una estimación, no una medición: la API no informa avance.
+   Sube sola y despacio hacia un techo, y pega un salto cada vez que pasa algo
+   de verdad —llegó el período, llegó la comparación, se pintó la vista—. Así
+   nunca dice 90 % cuando todavía no volvió nada. */
+const progreso = { mostrado: 0, objetivo: 0 };
+function fijarProgreso(piso, techo) {
+  progreso.mostrado = Math.max(progreso.mostrado, piso);
+  progreso.objetivo = Math.max(progreso.objetivo, techo);
+}
+
+function mostrarCortina(visible) {
+  const cortina = document.querySelector("#cargando");
+  if (!cortina) return;
+  clearTimeout(cortinaTimer);
+  clearInterval(frasesTimer);
+  clearInterval(pctTimer);
+  if (!visible) {
+    const pct = document.querySelector("#cargando-pct");
+    if (pct) pct.textContent = "100%";
+    cortina.hidden = true;
+    return;
+  }
+  /* Un cuarto de segundo de gracia: si la consulta vuelve enseguida, la
+     cortina no llega a aparecer y no se ve un parpadeo. */
+  cortinaTimer = setTimeout(() => {
+    const texto = document.querySelector("#cargando-frase");
+    let i = 0;
+    texto.textContent = FRASES_CARGA[0];
+    cortina.hidden = false;
+    const pct = document.querySelector("#cargando-pct");
+    pctTimer = setInterval(() => {
+      progreso.mostrado += (progreso.objetivo - progreso.mostrado) * 0.07;
+      pct.textContent = `${Math.round(progreso.mostrado)}%`;
+    }, 90);
+    frasesTimer = setInterval(() => {
+      i = (i + 1) % FRASES_CARGA.length;
+      texto.style.opacity = 0;
+      setTimeout(() => { texto.textContent = FRASES_CARGA[i]; texto.style.opacity = 1; }, 180);
+    }, 2200);
+  }, 250);
+}
+
 function pintarEstadoDatos() {
   const caja = document.querySelector("#data-state");
+  mostrarCortina(DATOS.cargando);
   if (!caja) return;
-  if (DATOS.cargando) { caja.hidden = false; caja.className = "data-state"; caja.textContent = "Consultando Windsor…"; return; }
+  if (DATOS.cargando) { caja.hidden = true; return; }
   if (DATOS.error) { caja.hidden = false; caja.className = "data-state is-error"; caja.textContent = DATOS.error; return; }
   if (!DATOS.filas.length) {
     caja.hidden = false; caja.className = "data-state";
@@ -240,12 +396,53 @@ function pintarEstadoDatos() {
 
 function fmt(metric, value) {
   const type = metricDefs[metric]?.[1] || "number";
+  // Lo que la fuente no informa se muestra vacío, nunca como un cero.
+  if (value === null || value === undefined) return "—";
   if (type === "currency") return new Intl.NumberFormat("es-AR", { style:"currency", currency: (typeof DATOS !== "undefined" && DATOS.moneda) || "USD", maximumFractionDigits:2 }).format(value);
   if (type === "percent") return `${new Intl.NumberFormat("es-AR", { maximumFractionDigits:2 }).format(value)}%`;
   if (type === "decimal") return new Intl.NumberFormat("es-AR", { maximumFractionDigits:2 }).format(value);
   return new Intl.NumberFormat("es-AR", { maximumFractionDigits:0 }).format(value);
 }
-function metricLabel(metric) { return metricDefs[metric]?.[0] || metric; }
+/* Una plataforma puede renombrar un indicador cuando su dato no significa lo
+   mismo que en el resto (el alcance de Instagram, por ejemplo). */
+function metricLabel(metric) { return platforms[state.platform]?.etiquetas?.[metric] || metricDefs[metric]?.[0] || metric; }
+
+/* Iconos de las vistas orgánicas. En medios pagos no van: ahí lo que ordena la
+   lectura es el número, y un icono por tarjeta sería ruido. */
+const ICONOS_ORGANICOS = {
+  followers: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17.5" cy="9.5" r="2.4"/><path d="M15 19a4.6 4.6 0 0 1 5.5-3.9"/>',
+  newFollowers: '<circle cx="10" cy="8" r="3.4"/><path d="M4 19a6 6 0 0 1 12 0"/><path d="M18 8v6M15 11h6"/>',
+  unfollows: '<circle cx="10" cy="8" r="3.4"/><path d="M4 19a6 6 0 0 1 12 0"/><path d="M15 11h6"/>',
+  balance: '<path d="M4 17h4V9H4zM10 17h4V5h-4zM16 17h4v-5h-4z"/>',
+  reels: '<rect x="3.5" y="3.5" width="17" height="17" rx="5"/><path d="M8 3.8 11 9M14 3.8 17 9M3.6 9h16.8"/><path d="m11 12.6 3.4 1.9-3.4 1.9z"/>',
+  feedPosts: '<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="m4 16 4-4 4 4 3-3 5 5"/><circle cx="9" cy="8.5" r="1.4"/>',
+  stories: '<circle cx="12" cy="12" r="8.5" stroke-dasharray="3.4 2.6"/><circle cx="12" cy="12" r="3.4"/>',
+  reach: '<circle cx="12" cy="9" r="2.8"/><path d="M7 19a5 5 0 0 1 10 0"/><path d="M4.5 7.5 2 5M19.5 7.5 22 5"/>',
+  interactions: '<path d="M4 12a8 8 0 1 1 3.2 6.4L3 20l1.3-4.1A7.9 7.9 0 0 1 4 12Z"/>',
+  shares: '<path d="M4 12v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/><path d="M12 15V4M8 7.5 12 3.5l4 4"/>',
+  saves: '<path d="M6 3.5h12v17l-6-4.2-6 4.2z"/>',
+  likes: '<path d="M12 20s-7.5-4.6-7.5-9.3A4.2 4.2 0 0 1 12 8a4.2 4.2 0 0 1 7.5 2.7C19.5 15.4 12 20 12 20Z"/>',
+  comments: '<path d="M20 15a2.5 2.5 0 0 1-2.5 2.5H8L4 21V6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5z"/>',
+  videoViews: '<rect x="3" y="5.5" width="18" height="13" rx="3"/><path d="m10.5 10 4.5 2.5-4.5 2.5z"/>',
+  views: '<path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/>',
+};
+const iconoDeMetrica = (metric) => {
+  if (currentPlatform().paid) return "";
+  const trazo = ICONOS_ORGANICOS[metric];
+  return trazo ? `<i class="kpi-icono" aria-hidden="true"><svg viewBox="0 0 24 24">${trazo}</svg></i>` : "";
+};
+
+/* En los indicadores de costo, subir es malo y bajar es bueno: un CPC que sube
+   no es una buena noticia aunque el número crezca. Lo mismo con quienes dejan
+   de seguir la cuenta. El resto son de volumen y se leen al derecho. */
+const INDICADORES_INVERSOS = new Set(["cpm", "cpa", "cpc", "cpv", "frequency", "unfollows"]);
+
+/** Clase de color de una variación: mira el indicador, no sólo el signo. */
+function claseDeCambio(metric, cambio) {
+  if (cambio === null || cambio === undefined) return "";
+  const mejora = INDICADORES_INVERSOS.has(metric) ? cambio < 0 : cambio >= 0;
+  return mejora ? "positive" : "negative";
+}
 function currentPlatform() { return platforms[DATOS.tipo] || platforms.meta; }
 function tipoDe(cuentaId){ const c=(DATOS.cuentasCliente||[]).find(x=>x.id===cuentaId); return c ? c.tipo : "meta"; }
 function hayComparacion(){ return state.comparison !== "none" && !!DATOS.filasComparacion.length; }
@@ -256,7 +453,7 @@ function currentMetrics() { const p=currentPlatform(); const base=(p.defaults[st
    permite pedir los de una campaña concreta para la tabla. */
 function valueFor(metric, filas) {
   const totales = filas ? totalizar(DATOS.tipo, filas, null) : totalesActuales();
-  return totales[metric] ?? 0;
+  return totales[metric] === undefined ? 0 : totales[metric];
 }
 function toISO(date){return date.toISOString().slice(0,10)}
 function dateText(value){return new Intl.DateTimeFormat("es-AR",{day:"2-digit",month:"2-digit",year:"numeric"}).format(new Date(`${value}T12:00:00`))}
@@ -301,7 +498,7 @@ function setPlatform(id) {
   const p=currentPlatform();
   state.objective="";
   state.selectedCampaigns=new Set();
-  state.selectedMetrics=(p.defaults[Object.keys(p.defaults)[0]]||p.metrics).slice(0,2);
+  state.selectedMetrics=(p.defaults[Object.keys(p.defaults)[0]]||p.metrics).filter(m=>!SIN_SERIE.has(m)).slice(0,2);
   state.chartTypes[state.selectedMetrics[0]]="bar"; state.chartTypes[state.selectedMetrics[1]]="line";
   state.expandedMetrics=new Set(state.tableMetrics[DATOS.tipo]||[]);
   cargarDatos();
@@ -311,27 +508,53 @@ function renderPlatformHeader() {
   const p=currentPlatform(); const cuenta=(DATOS.cuentasCliente||[]).find(x=>x.id===state.platform); document.querySelector("#platform-title").textContent=cuenta?cuenta.titulo:p.title; { const e=document.querySelector("#platform-eyebrow"); if(e) e.textContent=`${(DATOS.nombreCliente||"").toUpperCase()} · PERFORMANCE`.replace(/^ · /,""); } if(window.PanelEmisarios) window.PanelEmisarios.rutaDelPanel(); document.querySelector("#platform-description").textContent=p.description;
   document.querySelectorAll("[data-platform]").forEach(b=>b.classList.toggle("active",b.dataset.platform===state.platform));
   document.querySelector("#campaign-filter-wrap").classList.toggle("hidden",!p.paid); document.querySelector("#objective-row").classList.toggle("hidden",!p.paid); document.querySelector(".performance-panel").classList.toggle("hidden",!p.paid);
-  document.querySelector("#network-filter-wrap").classList.toggle("hidden",DATOS.tipo!=="instagram");
+  document.querySelector("#network-filter-wrap").classList.add("hidden");
 }
 
 function renderObjectives() {
-  // Los objetivos que se ofrecen son los de las campañas elegidas arriba: con
-  // una sola campaña queda su objetivo y nada más.
+  /* Los objetivos dejan de ser un rótulo: son un filtro. Se ofrecen los de las
+     campañas tildadas arriba, más «Todos», y al elegir uno se repinta el panel
+     entero en el acto, sin volver a consultar a Windsor. */
   const deLasCampanias=[...new Set(DATOS.campanias.filter(c=>state.selectedCampaigns.has(c[0])).map(c=>c[2]))];
-  const lista=deLasCampanias.length?deLasCampanias:Object.keys(DATOS.objetivos);
-  if(!lista.includes(state.objective)) state.objective=lista[0]||"";
-  document.querySelector("#objective-buttons").innerHTML=lista.map(id=>`<button class="objective-button ${id===state.objective?"active":""}" data-objective="${id}">${id}</button>`).join("");
-  document.querySelector("#objective-row").classList.toggle("single-objective",lista.length<=1);
-  document.querySelectorAll("[data-objective]").forEach(b=>b.onclick=()=>{ state.objective=b.dataset.objective; renderObjectives(); renderKpis(); renderChart(); marcarFiltrosPendientes(); });
+  if(!deLasCampanias.includes(state.objective)) state.objective=TODOS_LOS_OBJETIVOS;
+  const opciones=[[TODOS_LOS_OBJETIVOS,"Todos los objetivos"],...deLasCampanias.map(o=>[o,o])];
+  document.querySelector("#objective-buttons").innerHTML=opciones
+    .map(([id,texto])=>`<button class="objective-button ${id===state.objective?"active":""}" data-objective="${id}">${texto}</button>`).join("");
+  document.querySelector("#objective-row").classList.toggle("single-objective",deLasCampanias.length<=1);
+  document.querySelectorAll("[data-objective]").forEach(b=>b.onclick=()=>{
+    state.objective=b.dataset.objective;
+    renderObjectives(); renderKpis(); renderChart(); renderTable(); renderAdditionalModules();
+  });
 }
+const ESTADOS_CAMPANIA=[["todas","Todas"],["activa","Activas"],["pausada","En pausa"],["eliminada","Eliminadas"]];
+
 function renderCampaigns() {
   const list=DATOS.campanias;
-  document.querySelector("#campaign-options").innerHTML=list.length
-    ? list.map(c=>`<label class="campaign-option"><input type="checkbox" value="${c[0]}" ${state.selectedCampaigns.has(c[0])?"checked":""}><span>${c[1]}<small>${c[2]}</small></span></label>`).join("")
-    : '<p class="campaign-empty">La cuenta no devolvió campañas en este período.</p>';
-  document.querySelectorAll("#campaign-options input").forEach(i=>i.onchange=()=>{ i.checked?state.selectedCampaigns.add(i.value):state.selectedCampaigns.delete(i.value); if(!state.selectedCampaigns.size){state.selectedCampaigns.add(i.value);i.checked=true} renderCampaigns(); renderObjectives(); marcarFiltrosPendientes(); });
-  const elegidas=list.filter(c=>state.selectedCampaigns.has(c[0]));
-  document.querySelector("#campaign-summary").textContent = !list.length ? "Sin campañas" : elegidas.length===1 ? elegidas[0][1] : `${elegidas.length} seleccionadas`;
+  const filtro=document.querySelector("#campaign-states");
+  if(filtro){
+    filtro.innerHTML=ESTADOS_CAMPANIA.map(([id,texto])=>{
+      const cuantas=id==="todas"?list.length:list.filter(c=>c[3]===id).length;
+      return `<button class="estado-chip ${id===state.estadoCampanias?"active":""}" data-estado-campania="${id}" type="button">${texto} <b>${cuantas}</b></button>`;
+    }).join("");
+    document.querySelectorAll("[data-estado-campania]").forEach(b=>b.onclick=()=>{
+      state.estadoCampanias=b.dataset.estadoCampania;
+      renderCampaigns(); renderObjectives(); renderKpis(); renderChart(); renderTable(); renderAdditionalModules();
+    });
+  }
+
+  const visibles=list.filter(c=>state.estadoCampanias==="todas"||c[3]===state.estadoCampanias);
+  document.querySelector("#campaign-options").innerHTML=visibles.length
+    ? visibles.map(c=>`<label class="campaign-option"><input type="checkbox" value="${c[0]}" ${state.selectedCampaigns.has(c[0])?"checked":""}><span>${punto(c[3])}${c[1]}<small>${c[2]}</small></span></label>`).join("")
+    : '<p class="campaign-empty">No hay campañas con ese estado en este período.</p>';
+  document.querySelectorAll("#campaign-options input").forEach(i=>i.onchange=()=>{
+    i.checked?state.selectedCampaigns.add(i.value):state.selectedCampaigns.delete(i.value);
+    if(!state.selectedCampaigns.size){state.selectedCampaigns.add(i.value);i.checked=true}
+    renderCampaigns(); renderObjectives(); renderKpis(); renderChart(); renderTable(); renderAdditionalModules();
+  });
+
+  const elegidas=[...campaniasEnJuego()];
+  document.querySelector("#campaign-summary").textContent = !list.length ? "Sin campañas"
+    : elegidas.length===1 ? elegidas[0] : `${elegidas.length} seleccionadas`;
 }
 function renderKpis() {
   const metrics=currentMetrics(); const grid=document.querySelector("#kpi-grid");
@@ -339,9 +562,10 @@ function renderKpis() {
     const idx=state.selectedMetrics.indexOf(metric);
     const delta=deltaFor(metric);
     const signo=delta===null?"":delta>=0?"↑":"↓";
-    const clase=delta===null?"":delta>=0?"positive":"negative";
+    const clase=claseDeCambio(metric,delta);
     const removable=state.customKpis[DATOS.tipo].includes(metric);
-    return `<button class="kpi-card ${idx>=0?"selected":""}" data-metric="${metric}" data-order="${idx>=0?idx+1:""}" style="--series-color:${COLORS[Math.max(0,idx)]}"><span class="kpi-label">${metricLabel(metric)}</span><div class="kpi-value">${fmt(metric,valueFor(metric))}</div>${delta===null?"":`<span class="kpi-delta ${clase}">${signo} ${Math.abs(delta).toFixed(1).replace(".",",")}% vs. comparación</span>`}${removable?`<span class="kpi-remove" data-remove="${metric}">Quitar</span>`:""}</button>`;
+    const estatico=SIN_SERIE.has(metric);
+    return `<button class="kpi-card ${idx>=0?"selected":""} ${estatico?"is-static":""}" ${estatico?`title="Este indicador no tiene serie diaria"`:""} data-metric="${metric}" data-order="${idx>=0?idx+1:""}" style="--series-color:${COLORS[Math.max(0,idx)]}"><span class="kpi-label">${iconoDeMetrica(metric)}${metricLabel(metric)}</span><div class="kpi-value">${fmt(metric,valueFor(metric))}</div>${delta===null?"":`<span class="kpi-delta ${clase}">${signo} ${Math.abs(delta).toFixed(1).replace(".",",")}% vs. comparación</span>`}${removable?`<span class="kpi-remove" data-remove="${metric}">Quitar</span>`:""}</button>`;
   }).join("");
   const empty=3-state.customKpis[DATOS.tipo].length; for(let i=0;i<empty;i++) html+=`<button class="kpi-add" type="button">+<span>Agregar KPI</span></button>`; grid.innerHTML=html;
   grid.querySelectorAll(".kpi-card").forEach(card=>card.onclick=e=>{ if(e.target.dataset.remove){removeCustom(e.target.dataset.remove);return} toggleChartMetric(card.dataset.metric); });
@@ -353,8 +577,8 @@ function openKpiDialog() {
   document.querySelector("#kpi-dialog-options").innerHTML=choices.length?choices.map(m=>`<button type="button" class="kpi-choice" data-add-kpi="${m}">${metricLabel(m)}<span>+</span></button>`).join(""):`<p>Ya se muestran todos los KPI disponibles.</p>`;
   document.querySelectorAll("[data-add-kpi]").forEach(b=>b.onclick=()=>{ if(state.customKpis[DATOS.tipo].length<3)state.customKpis[DATOS.tipo].push(b.dataset.addKpi); document.querySelector("#kpi-dialog").close(); renderKpis(); }); document.querySelector("#kpi-dialog").showModal();
 }
-function removeCustom(metric){ state.customKpis[DATOS.tipo]=state.customKpis[DATOS.tipo].filter(m=>m!==metric); state.selectedMetrics=state.selectedMetrics.filter(m=>m!==metric); if(!state.selectedMetrics.length)state.selectedMetrics=[currentPlatform().defaults[state.objective][0]]; renderKpis();renderChart(); }
-function toggleChartMetric(metric){ const i=state.selectedMetrics.indexOf(metric); if(i>=0&&state.selectedMetrics.length>1)state.selectedMetrics.splice(i,1); else if(i<0){if(state.selectedMetrics.length===2)state.selectedMetrics.shift();state.selectedMetrics.push(metric);if(!state.chartTypes[metric])state.chartTypes[metric]="line"} renderKpis();renderChart(); }
+function removeCustom(metric){ state.customKpis[DATOS.tipo]=state.customKpis[DATOS.tipo].filter(m=>m!==metric); state.selectedMetrics=state.selectedMetrics.filter(m=>m!==metric); if(!state.selectedMetrics.length)state.selectedMetrics=[currentPlatform().defaults[state.objective].find(m=>!SIN_SERIE.has(m))]; renderKpis();renderChart(); }
+function toggleChartMetric(metric){ if(SIN_SERIE.has(metric))return; const i=state.selectedMetrics.indexOf(metric); if(i>=0&&state.selectedMetrics.length>1)state.selectedMetrics.splice(i,1); else if(i<0){if(state.selectedMetrics.length===2)state.selectedMetrics.shift();state.selectedMetrics.push(metric);if(!state.chartTypes[metric])state.chartTypes[metric]="line"} renderKpis();renderChart(); }
 
 /* La serie sale de las filas por fecha. Con granularidad semanal o mensual se
    agrupan esas mismas filas: nunca se inventa un punto que no vino. */
@@ -436,12 +660,17 @@ function renderTable(){
   const hay=hayComparacion();
   const niveles=DATOS.niveles||[];
   const titulo=["Campaña",...niveles.map(n=>TITULO_NIVEL[n]||n)].join(" / ").toLowerCase().replace(/^c/,"C");
-  let h1=`<tr><th rowspan="2">${titulo}</th>`,h2=`<tr class="subhead">`;
-  metrics.forEach(m=>{const open=hay&&state.expandedMetrics.has(m);h1+=`<th class="metric-group" colspan="${open?3:1}">${metricLabel(m)} ${hay?`<button class="metric-toggle" data-expand-metric="${m}">${open?"←":"→"}</button>`:""}</th>`;h2+=`<th>Actual</th>${open?"<th>Comparación</th><th>Cambio</th>":""}`});
+  let h1=`<tr><th class="col-nombre">${titulo}</th>`,h2=`<tr class="subhead"><th class="col-nombre"></th>`;
+  metrics.forEach(m=>{
+    const open=hay&&state.expandedMetrics.has(m);
+    h1+=`<th class="metric-group" colspan="${open?3:1}">${metricLabel(m)}${hay?`<button class="metric-toggle" data-expand-metric="${m}" title="${open?"Ocultar la comparación":"Ver la comparación"}">${open?"←":"→"}</button>`:""}</th>`;
+    h2+=`<th class="ini-grupo">Actual</th>${open?"<th>Comparación</th><th>Cambio</th>":""}`;
+  });
   head.innerHTML=`${h1}</tr>${h2}</tr>`;
   document.querySelectorAll("[data-expand-metric]").forEach(b=>b.onclick=()=>{state.expandedMetrics.has(b.dataset.expandMetric)?state.expandedMetrics.delete(b.dataset.expandMetric):state.expandedMetrics.add(b.dataset.expandMetric);renderTable()});
 
-  const elegidas=DATOS.campanias.filter(c=>state.selectedCampaigns.has(c[0]));
+  const enJuego=campaniasEnJuego();
+  const elegidas=DATOS.campanias.filter(c=>enJuego.has(c[0]));
   if(!elegidas.length){ body.innerHTML=`<tr><td colspan="${metrics.length+1}">Sin campañas en este período.</td></tr>`; return; }
 
   /* La tabla baja de campaña a conjunto y de conjunto a anuncio. Los totales de
@@ -451,7 +680,7 @@ function renderTable(){
   for(const c of elegidas){
     const nombre=c[0];
     const clave=`camp::${nombre}`;
-    filasTabla.push({ clave, etiqueta:c[1], nivel:"campaign", sangria:0,
+    filasTabla.push({ clave, etiqueta:c[1], estado:c[3], nivel:"campaign", sangria:0,
       actuales:DATOS.filas.filter(f=>f.campaign===nombre),
       previas:DATOS.filasComparacion.filter(f=>f.campaign===nombre),
       desplegable:niveles.length>0 });
@@ -460,16 +689,20 @@ function renderTable(){
     const primeros=[...new Set(ramaDe(DATOS.desglose,nombre,niveles,[]).map(f=>String(f[niveles[0]]??"")))];
     for(const valor of primeros){
       const claveNivel=`${clave}::${valor}`;
+      const ramaActual=ramaDe(DATOS.desglose,nombre,niveles,[valor]);
       filasTabla.push({ clave:claveNivel, etiqueta:nombreDeNivel(niveles[0],valor), nivel:CLASE_NIVEL(niveles[0]), sangria:1,
-        actuales:ramaDe(DATOS.desglose,nombre,niveles,[valor]),
+        estado: DATOS.nivelesEstado[0] && ramaActual[0] ? estadoDeFila(ramaActual[0], DATOS.nivelesEstado[0]) : null,
+        actuales:ramaActual,
         previas:ramaDe(DATOS.desgloseComparacion,nombre,niveles,[valor]),
         desplegable:niveles.length>1 });
       if(niveles.length<2 || !state.expandedRows.has(claveNivel)) continue;
 
       const segundos=[...new Set(ramaDe(DATOS.desglose,nombre,niveles,[valor]).map(f=>String(f[niveles[1]]??"")))];
       for(const hoja of segundos){
+        const ramaHoja=ramaDe(DATOS.desglose,nombre,niveles,[valor,hoja]);
         filasTabla.push({ clave:`${claveNivel}::${hoja}`, etiqueta:nombreDeNivel(niveles[1],hoja), nivel:"ad", sangria:2,
-          actuales:ramaDe(DATOS.desglose,nombre,niveles,[valor,hoja]),
+          estado: DATOS.nivelesEstado[1] && ramaHoja[0] ? estadoDeFila(ramaHoja[0], DATOS.nivelesEstado[1]) : null,
+          actuales:ramaHoja,
           previas:ramaDe(DATOS.desgloseComparacion,nombre,niveles,[valor,hoja]),
           desplegable:false });
       }
@@ -477,17 +710,18 @@ function renderTable(){
   }
 
   body.innerHTML=filasTabla.map(fila=>{
+    /* El mismo punto que en el filtro de campañas: verde si sigue corriendo. */
     const nombre=fila.desplegable
-      ? `<button class="row-toggle" data-row="${fila.clave}">${state.expandedRows.has(fila.clave)?"⌄":"›"} ${fila.etiqueta}</button>`
-      : fila.etiqueta;
+      ? `<button class="row-toggle" data-row="${fila.clave}">${state.expandedRows.has(fila.clave)?"⌄":"›"} ${punto(fila.estado)}${fila.etiqueta}</button>`
+      : `${punto(fila.estado)}${fila.etiqueta}`;
     let celdas=`<td style="padding-left:${12+fila.sangria*18}px">${nombre}</td>`;
     metrics.forEach(m=>{
       const v=valueFor(m,fila.actuales);
-      celdas+=`<td>${fmt(m,v)}</td>`;
+      celdas+=`<td class="ini-grupo">${fmt(m,v)}</td>`;
       if(hay&&state.expandedMetrics.has(m)){
         const previo=valueFor(m,fila.previas);
         const cambio=previo?(v/previo-1)*100:null;
-        celdas+=`<td>${fmt(m,previo)}</td><td class="${cambio===null?"":cambio>=0?"positive":"negative"}">${cambio===null?"—":`${cambio>=0?"+":"−"}${Math.abs(cambio).toFixed(1).replace(".",",")}%`}</td>`;
+        celdas+=`<td>${fmt(m,previo)}</td><td class="${claseDeCambio(m,cambio)}">${cambio===null?"—":`${cambio>=0?"+":"−"}${Math.abs(cambio).toFixed(1).replace(".",",")}%`}</td>`;
       }
     });
     return `<tr class="level-${fila.nivel}">${celdas}</tr>`;
@@ -495,14 +729,256 @@ function renderTable(){
   document.querySelectorAll("[data-row]").forEach(b=>b.onclick=()=>{state.expandedRows.has(b.dataset.row)?state.expandedRows.delete(b.dataset.row):state.expandedRows.add(b.dataset.row);renderTable()});
 }
 function moduleTable(title,first,metrics,rows){return `<section class="panel"><div class="panel-heading"><div><p class="eyebrow">GOOGLE ADS</p><h2>${title}</h2></div></div><div class="table-scroll"><table class="module-table"><thead><tr><th>${first}</th>${metrics.map(m=>`<th>${m}</th>`).join("")}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((v,i)=>`<td>${v}</td>`).join("")}</tr>`).join("")}</tbody></table></div></section>`}
+/* ── Desgloses de Google ─────────────────────────────────────────────────
+   Palabras clave, términos de búsqueda, ciudades y provincias. Cada tabla se
+   ordena haciendo clic en su encabezado y se pagina, porque los términos de
+   búsqueda pasan de cinco mil filas y mostrarlos todos no ayuda a nadie.
+   Debajo de las geográficas va un gráfico de barras con dos métricas a elegir. */
+
+const COLUMNAS_EXTRA = [
+  { id: "nombre", tipo: "texto" },
+  { id: "clicks", titulo: "Clics", tipo: "num" },
+  { id: "impressions", titulo: "Impresiones", tipo: "num" },
+  { id: "ctr", titulo: "CTR", tipo: "num" },
+  { id: "spend", titulo: "Inversión", tipo: "num" },
+  { id: "conversions", titulo: "Conversiones", tipo: "num" },
+  { id: "cpa", titulo: "Costo / conv.", tipo: "num" },
+];
+const METRICAS_GRAFICO = ["clicks", "impressions", "spend", "conversions"];
+const CON_GRAFICO = new Set(["ciudades", "provincias"]);
+const POR_PAGINA = [10, 25, 50, 100];
+/* El nombre de una ciudad ilegible no sirve para un reporte, así que el tamaño
+   del texto del gráfico lo elige quien lo mira. 1 es el tamaño de siempre. */
+const ESCALAS_TEXTO = [0.85, 1, 1.2, 1.45, 1.75, 2.1];
+
+/* Cada tabla recuerda su orden y su página por separado. */
+const estadoExtra = {};
+function ajustesDe(id) {
+  if (!estadoExtra[id]) estadoExtra[id] = { orden: "spend", desc: true, porPagina: 10, pagina: 1, m1: "clicks", m2: "conversions", valores: {}, escala: 1 };
+  return estadoExtra[id];
+}
+
+function filasDeExtra(extra) {
+  return extra.filas
+    .map((f) => {
+      const clicks = num(f.clicks), impressions = num(f.impressions);
+      const spend = num(f.spend), conversions = num(f.conversions);
+      return {
+        nombre: f[extra.campo] || "—",
+        estado: extra.estado ? estadoDeFila(f, extra.estado) : null,
+        clicks, impressions, spend, conversions,
+        ctr: impressions ? (clicks / impressions) * 100 : 0,
+        cpa: conversions ? spend / conversions : null,
+      };
+    })
+    .filter((f) => f.clicks || f.impressions || f.spend);
+}
+
+function ordenar(filas, ajustes) {
+  const col = COLUMNAS_EXTRA.find((c) => c.id === ajustes.orden) || COLUMNAS_EXTRA[0];
+  const signo = ajustes.desc ? -1 : 1;
+  return [...filas].sort((a, b) => {
+    if (col.tipo === "texto") return signo * String(a.nombre).localeCompare(String(b.nombre), "es");
+    // Las celdas sin dato van siempre al final, se ordene como se ordene.
+    const x = a[col.id], y = b[col.id];
+    if (x === null) return 1;
+    if (y === null) return -1;
+    return signo * (x - y);
+  });
+}
+
+function formatoDe(id) {
+  return id === "spend" ? "spend" : id === "cpa" ? "cpa" : id === "ctr" ? "ctr" : id;
+}
+
+function tablaExtra(extra) {
+  const ajustes = ajustesDe(extra.id);
+  const filas = ordenar(filasDeExtra(extra), ajustes);
+  if (!filas.length) return "";
+  const paginas = Math.max(1, Math.ceil(filas.length / ajustes.porPagina));
+  if (ajustes.pagina > paginas) ajustes.pagina = paginas;
+  const desde = (ajustes.pagina - 1) * ajustes.porPagina;
+  const visibles = filas.slice(desde, desde + ajustes.porPagina);
+
+  const flecha = (id) => (ajustes.orden === id ? (ajustes.desc ? " ↓" : " ↑") : "");
+  const cabecera = COLUMNAS_EXTRA.map((c) =>
+    `<th><button class="orden-col${ajustes.orden === c.id ? " activa" : ""}" data-orden="${extra.id}:${c.id}" type="button">${c.id === "nombre" ? extra.columna : c.titulo}${flecha(c.id)}</button></th>`).join("");
+
+  const cuerpo = visibles.map((f) => `<tr>
+      <td>${punto(f.estado)}${f.nombre}</td>
+      ${COLUMNAS_EXTRA.slice(1).map((c) => `<td>${f[c.id] === null ? "—" : fmt(formatoDe(c.id), f[c.id])}</td>`).join("")}
+    </tr>`).join("");
+
+  const nf = new Intl.NumberFormat("es-AR");
+  const pie = `<div class="paginado">
+      <label>Ver <select data-por-pagina="${extra.id}">${POR_PAGINA.map((n) => `<option value="${n}" ${n === ajustes.porPagina ? "selected" : ""}>${n}</option>`).join("")}</select> por página</label>
+      <span>${nf.format(desde + 1)} a ${nf.format(desde + visibles.length)} de ${nf.format(filas.length)}</span>
+      <span class="paginado-botones">
+        <button data-pagina="${extra.id}:1" type="button" ${ajustes.pagina === 1 ? "disabled" : ""}>«</button>
+        <button data-pagina="${extra.id}:${ajustes.pagina - 1}" type="button" ${ajustes.pagina === 1 ? "disabled" : ""}>‹</button>
+        <b>${ajustes.pagina} / ${paginas}</b>
+        <button data-pagina="${extra.id}:${ajustes.pagina + 1}" type="button" ${ajustes.pagina === paginas ? "disabled" : ""}>›</button>
+        <button data-pagina="${extra.id}:${paginas}" type="button" ${ajustes.pagina === paginas ? "disabled" : ""}>»</button>
+      </span>
+    </div>`;
+
+  const grafico = CON_GRAFICO.has(extra.id) ? bloqueGrafico(extra, ajustes) : "";
+
+  return `<section class="panel"><div class="panel-heading"><div><p class="eyebrow">GOOGLE ADS</p><h2>${extra.titulo}</h2></div></div>
+    <div class="table-scroll"><table class="module-table extra-table"><thead><tr>${cabecera}</tr></thead><tbody>${cuerpo}</tbody></table></div>
+    ${pie}${grafico}</section>`;
+}
+
+/* El gráfico sigue a la tabla: dibuja las filas de la página que se está
+   viendo y con el orden elegido, así lo de arriba y lo de abajo coinciden. */
+function bloqueGrafico(extra, ajustes) {
+  const opciones = (sel, cual) => METRICAS_GRAFICO
+    .map((m) => `<option value="${m}" ${m === sel ? "selected" : ""}>${metricLabel(m)}</option>`).join("") +
+    (cual === 2 ? `<option value="" ${sel ? "" : "selected"}>Ninguna</option>` : "");
+  const serie = (cual, sel) => `<label><i style="background:${COLORS[cual - 1]}"></i>M\u00e9trica ${cual}
+      <select data-metrica="${extra.id}:${cual}">${opciones(sel, cual)}</select>
+      ${sel ? `<span class="series-values"><input type="checkbox" data-valores="${extra.id}:${sel}" ${ajustes.valores[sel] ? "checked" : ""}> Mostrar datos</span>` : ""}
+    </label>`;
+  const i = ESCALAS_TEXTO.indexOf(ajustes.escala);
+  const tamano = `<span class="texto-escala">Tama\u00f1o del texto
+      <button data-texto="${extra.id}:-" type="button" aria-label="Reducir el texto" ${i <= 0 ? "disabled" : ""}>\u2212</button>
+      <b>${Math.round(ajustes.escala * 100)}%</b>
+      <button data-texto="${extra.id}:+" type="button" aria-label="Agrandar el texto" ${i >= ESCALAS_TEXTO.length - 1 ? "disabled" : ""}>+</button>
+    </span>`;
+  return `<div class="grafico-extra">
+      <div class="series-control-row">${serie(1, ajustes.m1)}${serie(2, ajustes.m2)}${tamano}</div>
+      <svg id="grafico-${extra.id}" class="barras-extra" role="img" aria-label="${extra.titulo}"></svg>
+    </div>`;
+}
+
+function pintarBarras(extra) {
+  const svg = document.querySelector(`#grafico-${extra.id}`);
+  if (!svg) return;
+  const ajustes = ajustesDe(extra.id);
+  const filas = ordenar(filasDeExtra(extra), ajustes);
+  const desde = (ajustes.pagina - 1) * ajustes.porPagina;
+  const datos = filas.slice(desde, desde + ajustes.porPagina);
+  const metricas = [ajustes.m1, ajustes.m2].filter(Boolean);
+  if (!datos.length || !metricas.length) { svg.innerHTML = ""; return; }
+
+  /* Todo lo que ocupa texto crece con la escala: la tipografía, los márgenes que
+     la alojan y el alto del gráfico. Con 1 queda igual que siempre. */
+  const esc = ajustes.escala;
+  const fs = 11 * esc, fsValor = 10 * esc;
+  const ancho = Math.max(640, svg.clientWidth || 900);
+  const margen = { l: 66 * esc, r: metricas.length > 1 ? 66 * esc : 20, t: 16, b: 85 * esc };
+  const alto = Math.round(margen.t + 170 + margen.b);
+  const iw = ancho - margen.l - margen.r, ih = alto - margen.t - margen.b;
+  /* Cada métrica con su propio eje: clics e impresiones no comparten escala. */
+  const topes = metricas.map((m) => Math.max(...datos.map((d) => d[m] || 0), 1) * 1.12);
+  const paso = iw / datos.length;
+  const bw = Math.min(26, (paso * 0.62) / metricas.length);
+  /* Los nombres van en diagonal: lo que entra depende del alto reservado abajo
+     y del cuerpo de la letra, no de un número fijo de caracteres. */
+  const largo = Math.max(6, Math.floor((margen.b - fs - 14) / Math.sin(0.663) / (fs * 0.55)));
+
+  let html = "";
+  for (let t = 0; t < 5; t++) {
+    const py = margen.t + ih - (t * ih) / 4;
+    html += `<line class="chart-grid" x1="${margen.l}" y1="${py}" x2="${ancho - margen.r}" y2="${py}"/>`;
+    metricas.forEach((m, i) => {
+      html += `<text class="chart-axis" style="font-size:${fs}px" x="${i === 0 ? margen.l - 9 : ancho - margen.r + 9}" y="${py + fs * 0.36}" text-anchor="${i === 0 ? "end" : "start"}">${fmt(formatoDe(m), (topes[i] * t) / 4)}</text>`;
+    });
+  }
+  let etiquetas = "";
+  datos.forEach((d, i) => {
+    const centro = margen.l + paso * (i + 0.5);
+    metricas.forEach((m, s) => {
+      const v = d[m] || 0;
+      const h = (v / topes[s]) * ih;
+      const x = centro - (bw * metricas.length) / 2 + bw * s;
+      html += `<rect class="chart-bar" x="${x}" y="${margen.t + ih - h}" width="${bw}" height="${h}" rx="3" fill="${COLORS[s]}"><title>${d.nombre} \u00b7 ${metricLabel(m)}: ${fmt(formatoDe(m), v)}</title></rect>`;
+      // Los valores van al final del dibujo para que no los tape ninguna barra.
+      if (ajustes.valores[m]) etiquetas += `<text class="chart-value" style="font-size:${fsValor}px" x="${x + bw / 2}" y="${margen.t + ih - h - 5}" text-anchor="middle" fill="${COLORS[s]}">${fmt(formatoDe(m), v)}</text>`;
+    });
+    const corto = d.nombre.length > largo ? `${d.nombre.slice(0, largo - 1)}\u2026` : d.nombre;
+    html += `<text class="chart-axis" style="font-size:${fs}px" transform="translate(${centro},${margen.t + ih + fs + 8}) rotate(-38)" text-anchor="end">${corto}</text>`;
+  });
+  svg.setAttribute("viewBox", `0 0 ${ancho} ${alto}`);
+  svg.innerHTML = html + etiquetas;
+}
+
+function conectarExtras() {
+  document.querySelectorAll("[data-orden]").forEach((b) => (b.onclick = () => {
+    const [id, col] = b.dataset.orden.split(":");
+    const a = ajustesDe(id);
+    // Volver a tocar la misma columna da vuelta el orden; otra columna arranca
+    // de mayor a menor si son números y de la A a la Z si es texto.
+    if (a.orden === col) a.desc = !a.desc;
+    else { a.orden = col; a.desc = col !== "nombre"; }
+    a.pagina = 1;
+    renderAdditionalModules();
+  }));
+  document.querySelectorAll("[data-por-pagina]").forEach((sel) => (sel.onchange = () => {
+    const a = ajustesDe(sel.dataset.porPagina);
+    a.porPagina = Number(sel.value);
+    a.pagina = 1;
+    renderAdditionalModules();
+  }));
+  document.querySelectorAll("[data-pagina]").forEach((b) => (b.onclick = () => {
+    const [id, pagina] = b.dataset.pagina.split(":");
+    ajustesDe(id).pagina = Number(pagina);
+    renderAdditionalModules();
+  }));
+  document.querySelectorAll("[data-metrica]").forEach((sel) => (sel.onchange = () => {
+    const [id, cual] = sel.dataset.metrica.split(":");
+    ajustesDe(id)[cual === "1" ? "m1" : "m2"] = sel.value;
+    renderAdditionalModules();
+  }));
+  document.querySelectorAll("[data-valores]").forEach((casilla) => (casilla.onchange = () => {
+    const [id, metrica] = casilla.dataset.valores.split(":");
+    ajustesDe(id).valores[metrica] = casilla.checked;
+    renderAdditionalModules();
+  }));
+  document.querySelectorAll("[data-texto]").forEach((b) => (b.onclick = () => {
+    const [id, signo] = b.dataset.texto.split(":");
+    const a = ajustesDe(id);
+    const i = ESCALAS_TEXTO.indexOf(a.escala) + (signo === "+" ? 1 : -1);
+    if (i < 0 || i >= ESCALAS_TEXTO.length) return;
+    a.escala = ESCALAS_TEXTO[i];
+    renderAdditionalModules();
+  }));
+  DATOS.extras.filter((e) => CON_GRAFICO.has(e.id)).forEach(pintarBarras);
+}
+
+/* Lo publicado en el período: sale de la consulta de contenido de Instagram
+   Insights. Las historias no están porque la API sólo las guarda 24 horas. */
+const COLUMNAS_CONTENIDO = [
+  ["media_reach", "Alcance", "number"],
+  ["media_views", "Visualizaciones", "number"],
+  ["media_engagement", "Interacciones", "number"],
+  ["media_like_count", "Me gusta", "number"],
+  ["media_comments_count", "Comentarios", "number"],
+  ["media_shares", "Compartidos", "number"],
+  ["media_saved", "Guardados", "number"],
+];
+const TIPO_CONTENIDO = { REEL: "Reel", REELS: "Reel", FEED: "Feed", STORY: "Historia", AD: "Aviso", IGTV: "IGTV" };
+
+function tablaContenido(){
+  const filas=[...(DATOS.contenido||[])].sort((a,b)=>String(b.timestamp||"").localeCompare(String(a.timestamp||"")));
+  if(!filas.length) return `<section class="panel"><p class="eyebrow">CONTENIDO</p><p class="form-note">No hay publicaciones en el período elegido.</p></section>`;
+  const nf=new Intl.NumberFormat("es-AR",{maximumFractionDigits:0});
+  const cuerpo=filas.map((m)=>{
+    const tipo=TIPO_CONTENIDO[String(m.media_product_type||"").toUpperCase()]||String(m.media_product_type||"—");
+    const fecha=m.timestamp?new Intl.DateTimeFormat("es-AR",{day:"2-digit",month:"2-digit",year:"numeric"}).format(new Date(m.timestamp)):"—";
+    const nombre=m.media_permalink?`<a href="${m.media_permalink}" target="_blank" rel="noreferrer noopener">${fecha}</a>`:fecha;
+    return `<tr><td>${nombre}</td><td>${tipo}</td>${COLUMNAS_CONTENIDO.map(([c])=>`<td>${m[c]===null||m[c]===undefined?"—":nf.format(Number(m[c])||0)}</td>`).join("")}</tr>`;
+  }).join("");
+  return `<section class="panel"><div class="panel-heading"><div><p class="eyebrow">INSTAGRAM</p><h2>Contenido publicado</h2></div></div>
+    <div class="table-scroll"><table class="module-table extra-table"><thead><tr><th>Publicación</th><th>Tipo</th>${COLUMNAS_CONTENIDO.map(([,t])=>`<th>${t}</th>`).join("")}</tr></thead><tbody>${cuerpo}</tbody></table></div></section>`;
+}
+
 function renderAdditionalModules(){
-  /* Los desgloses por palabra clave, zona o contenido necesitan consultas
-     aparte en Windsor que todavía no están conectadas. Antes que mostrar
-     números de ejemplo, se dice qué falta. */
   const root=document.querySelector("#additional-modules");
+  if(DATOS.extras.length){ root.innerHTML=DATOS.extras.map(tablaExtra).join(""); conectarExtras(); return; }
+  /* Lo que todavía no está conectado se dice, no se rellena con ejemplos. */
+  if(DATOS.tipo==="instagram"){ root.innerHTML=tablaContenido(); return; }
   const pendientes={
-    google:"El desglose por palabra clave y por ciudad necesita una consulta aparte en Windsor.",
-    instagram:"El perfil conectado es el público de Instagram: informa seguidores y publicaciones. El alcance, las interacciones y el contenido necesitan la cuenta de Instagram Insights conectada en Windsor.",
     tiktokOrganic:"TikTok orgánico todavía no está conectado en Windsor.",
   };
   const texto=pendientes[DATOS.tipo];

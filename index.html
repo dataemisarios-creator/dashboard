@@ -15,15 +15,58 @@
     <div class="login-screen" id="login-screen">
       <form class="login-card" id="login-form" novalidate>
         <div class="login-brand">
-          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h12a5 5 0 0 1 0 10H9" /><path d="M4 14h9a5 5 0 0 1 0 10H4" /></svg></span>
+          <span class="brand-mark" aria-hidden="true"><img src="./logo-emisarios.png" alt="" /></span>
           <span><strong>Emisarios</strong><small>DASHBOARD DE SEGUIMIENTO</small></span>
         </div>
         <h1>Entrar al panel</h1>
         <label>Usuario<input id="login-user" autocomplete="username" placeholder="tu usuario" /></label>
-        <label>Contraseña<input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••" /></label>
+        <label>Contraseña
+          <span class="campo-clave">
+            <input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••" />
+            <button class="ver-clave" type="button" data-ver="login-pass" aria-label="Mostrar la contraseña" aria-pressed="false"></button>
+          </span>
+        </label>
         <p class="form-error" id="login-error" hidden></p>
         <button class="apply-button" type="submit">Entrar</button>
-        <p class="login-help">Acceso restringido. El único usuario cargado es <strong>yan</strong>.</p>
+        <button class="link-button" type="button" id="ir-recuperar">¿Olvidaste tu contraseña?</button>
+      </form>
+
+      <!-- Pedir el enlace de recuperación -->
+      <form class="login-card" id="recuperar-form" novalidate hidden>
+        <div class="login-brand">
+          <span class="brand-mark" aria-hidden="true"><img src="./logo-emisarios.png" alt="" /></span>
+          <span><strong>Emisarios</strong><small>DASHBOARD DE SEGUIMIENTO</small></span>
+        </div>
+        <h1>Recuperar contraseña</h1>
+        <p class="login-nota">Escribí tu usuario o tu correo y te mandamos un enlace para elegir una contraseña nueva.</p>
+        <label>Usuario o correo<input id="recuperar-quien" autocomplete="username" placeholder="tu usuario" /></label>
+        <p class="form-error" id="recuperar-error" hidden></p>
+        <p class="form-ok" id="recuperar-ok" hidden></p>
+        <button class="apply-button" type="submit">Enviar enlace</button>
+        <button class="link-button" type="button" id="volver-login">Volver</button>
+      </form>
+
+      <!-- Elegir la contraseña nueva, cuando se entra desde el enlace -->
+      <form class="login-card" id="restablecer-form" novalidate hidden>
+        <div class="login-brand">
+          <span class="brand-mark" aria-hidden="true"><img src="./logo-emisarios.png" alt="" /></span>
+          <span><strong>Emisarios</strong><small>DASHBOARD DE SEGUIMIENTO</small></span>
+        </div>
+        <h1>Nueva contraseña</h1>
+        <label>Contraseña nueva
+          <span class="campo-clave">
+            <input id="nueva-clave" type="password" autocomplete="new-password" placeholder="mínimo 12 caracteres" />
+            <button class="ver-clave" type="button" data-ver="nueva-clave" aria-label="Mostrar la contraseña" aria-pressed="false"></button>
+          </span>
+        </label>
+        <label>Repetila
+          <span class="campo-clave">
+            <input id="nueva-clave-2" type="password" autocomplete="new-password" placeholder="mínimo 12 caracteres" />
+            <button class="ver-clave" type="button" data-ver="nueva-clave-2" aria-label="Mostrar la contraseña" aria-pressed="false"></button>
+          </span>
+        </label>
+        <p class="form-error" id="restablecer-error" hidden></p>
+        <button class="apply-button" type="submit">Guardar y entrar</button>
       </form>
     </div>
 
@@ -31,7 +74,8 @@
       <aside class="sidebar" id="sidebar" aria-label="Navegación principal">
         <div class="brand-row">
           <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M4 4h12a5 5 0 0 1 0 10H9" /><path d="M4 14h9a5 5 0 0 1 0 10H4" /></svg>
+            <!-- Sobre el violeta va la marca en negativo. -->
+            <img src="./logo-emisarios-blanco.png" alt="" />
           </span>
           <span class="brand-text"><strong>Emisarios</strong><small>DASHBOARD DE SEGUIMIENTO</small></span>
         </div>
@@ -79,6 +123,16 @@
       </aside>
 
       <main id="main-content" class="main-content">
+
+        <!-- Cortina de carga: tapa el contenido mientras se consulta Windsor
+             para que no se vea el panel a medio pintar. -->
+        <div class="cargando" id="cargando" hidden aria-live="polite">
+          <div class="cargando-caja">
+            <div class="cargando-barras" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+            <p class="cargando-frase" id="cargando-frase">Estamos escarbando en los datos</p>
+            <small>Consultando Windsor · <b id="cargando-pct">0%</b></small>
+          </div>
+        </div>
         <header class="topbar">
           <div class="breadcrumb">
             <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="Contraer o expandir el panel lateral" aria-pressed="false">
@@ -137,6 +191,7 @@
                 </button>
                 <div class="popover campaign-popover" id="campaign-popover" hidden>
                   <div class="popover-title"><strong>Seleccionar campañas</strong><span><button type="button" id="campaign-select-all">Seleccionar todo</button><button type="button" id="campaign-clear">Limpiar</button></span></div>
+                  <div class="campaign-states" id="campaign-states" role="group" aria-label="Filtrar por estado"></div>
                   <div id="campaign-options"></div>
                 </div>
               </div>
@@ -217,12 +272,20 @@
         <!-- ─────────────── Vista: reportes ─────────────── -->
         <div class="dashboard view" id="view-reports" hidden>
           <section class="page-heading">
-            <div><p class="eyebrow">EMISARIOS ARGENTINA</p><h1>Reportes</h1><p>Descargas de las vistas del panel, con los filtros que tengas aplicados.</p></div>
+            <div><p class="eyebrow">EMISARIOS ARGENTINA</p><h1>Reportes</h1></div>
           </section>
+
           <section class="panel">
-            <div class="panel-heading"><div><p class="eyebrow">DESCARGAS</p><h2>Generar un reporte</h2></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">DESCARGAS</p><h2>Reportes Rápidos</h2></div></div>
             <div class="report-grid" id="report-grid"></div>
           </section>
+
+          <section class="panel history-panel">
+            <h2>Histórico de Reportes Mensuales</h2>
+            <label class="year-picker"><span class="sr-only">Año</span><select id="report-year" aria-label="Año"></select></label>
+          </section>
+          <!-- Los meses van sobre el fondo, fuera de la tarjeta blanca. -->
+          <div class="months-grid" id="months-grid"></div>
         </div>
 
         <!-- ─────────────── Vista: usuarios y accesos ─────────────── -->
@@ -244,11 +307,12 @@
             <div class="panel-heading"><div><p class="eyebrow">REFERENCIA</p><h2>Qué ve cada nivel</h2></div></div>
             <div class="table-scroll">
               <table class="module-table levels-table">
-                <thead><tr><th>NIVEL</th><th>CUENTAS</th><th>INVERSIÓN Y MÁRGENES</th><th>GESTIONAR ACCESOS</th></tr></thead>
+                <thead><tr><th>NIVEL</th><th>CUENTAS</th><th>INVERSIÓN Y MÁRGENES</th><th>APROBAR REPORTES</th><th>GESTIONAR ACCESOS</th></tr></thead>
                 <tbody>
-                  <tr><td><strong>Administrador</strong><small>Ve todas las cuentas y decide quién entra al panel.</small></td><td>Todas</td><td>Sí</td><td>Sí</td></tr>
-                  <tr><td><strong>Especialista</strong><small>Perfil medio de Clidea: ve todas las cuentas, no toca los accesos.</small></td><td>Todas o algunas</td><td>Sí</td><td>No</td></tr>
-                  <tr><td><strong>Cliente</strong><small>Ve sólo las cuentas que tenga asignadas, con datos ya visibles.</small></td><td>Las asignadas</td><td>Sí</td><td>No</td></tr>
+                  <tr><td><strong>Administrador</strong><small>Ve todas las cuentas y es el único que decide quién entra al panel.</small></td><td>Todas</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
+                  <tr><td><strong>Project Manager</strong><small>Los mismos permisos que el administrador sobre los datos y los reportes; lo único que no puede es dar ni quitar accesos.</small></td><td>Todas</td><td>Sí</td><td>Sí</td><td>No</td></tr>
+                  <tr><td><strong>Especialista</strong><small>Trabaja los reportes y ve las cuentas que tenga asignadas, pero no los aprueba.</small></td><td>Todas o algunas</td><td>Sí</td><td>No</td><td>No</td></tr>
+                  <tr><td><strong>Cliente</strong><small>Ve sólo las cuentas asignadas y descarga los reportes ya publicados.</small></td><td>Las asignadas</td><td>Sí</td><td>No</td><td>No</td></tr>
                 </tbody>
               </table>
             </div>
@@ -266,8 +330,8 @@
               <div class="form-grid">
                 <label>Nombre de usuario<input id="f-user" required placeholder="Nombre de Usuario" /></label>
                 <label>Nombre y Apellido<input id="f-name" required placeholder="Como se le llama" /></label>
-                <label>Correo (opcional)<input id="f-mail" type="email" placeholder="nombre@correo.com" /></label>
-                <label>Rol<select id="f-role"><option value="Administrador">Administrador</option><option value="Especialista">Especialista</option><option value="Cliente" selected>Cliente</option></select></label>
+                <label>Correo<input id="f-mail" type="email" placeholder="nombre@correo.com" /></label>
+                <label>Rol<select id="f-role"><option value="Administrador">Administrador</option><option value="PM">Project Manager</option><option value="Especialista">Especialista</option><option value="Cliente" selected>Cliente</option></select></label>
               </div>
               <p class="form-legend">Cuentas que puede ver</p>
               <div class="accounts-matrix" id="accounts-matrix"></div>

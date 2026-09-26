@@ -326,11 +326,37 @@ function descargarTodo(desde, hasta) {
   }, 400);
 }
 
-/* ── Reportes ────────────────────────────────────────────────────────── */
+/* ── Reportes ────────────────────────────────────────────────────────────
+   Dos bloques: las descargas rápidas de cada cuenta conectada y el histórico
+   mensual. Lo que puede hacer cada perfil con un mes cambia: el cliente sólo
+   descarga el reporte ya publicado, el especialista y el PM entran a
+   trabajarlo, y el PM y el administrador además lo aprueban y publican. */
+
+const MESES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+  "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
+
+/* Qué botones ve cada perfil en cada mes. `aprueba` agrega el segundo botón. */
+const ACCIONES_POR_ROL = {
+  Cliente: { entrar: "DESCARGAR", aprueba: false },
+  Lectura: { entrar: "DESCARGAR", aprueba: false },
+  Especialista: { entrar: "INGRESAR", aprueba: false },
+  PM: { entrar: "INGRESAR", aprueba: true },
+  Administrador: { entrar: "INGRESAR", aprueba: true },
+};
+const accionesDelPerfil = () => ACCIONES_POR_ROL[sesion?.rol] || ACCIONES_POR_ROL.Cliente;
+
 function pintarReportes() {
-  $("#report-grid").innerHTML = Object.entries(platforms).map(([id, p]) =>
-    `<button class="report-card" type="button" data-report="${id}"><strong>${p.title}</strong><small>PDF de la vista con los filtros aplicados</small></button>`).join("") +
-    `<button class="report-card" type="button" data-report="__todo"><strong>Todas las cuentas</strong><small>Un PDF con las cinco vistas</small></button>`;
+  pintarReportesRapidos();
+  pintarAnios();
+  pintarMeses();
+}
+
+/* Una tarjeta por cuenta conectada de este cliente, más el PDF con todas. */
+function pintarReportesRapidos() {
+  const cuentas = clienteActual ? clienteActual.cuentas : [];
+  $("#report-grid").innerHTML = cuentas.map((c) =>
+    `<button class="report-card" type="button" data-report="${c.id}"><strong>${c.titulo}</strong><small>PDF de la vista con los filtros aplicados</small></button>`).join("") +
+    `<button class="report-card" type="button" data-report="__todo"><strong>Todas las cuentas</strong><small>Un PDF con las ${cuentas.length} vistas</small></button>`;
   $$("[data-report]").forEach((b) => (b.onclick = () => {
     if (b.dataset.report === "__todo") { $("#export-all").click(); return; }
     setPlatform(b.dataset.report);
@@ -338,6 +364,35 @@ function pintarReportes() {
     filtrosAplicados();
     setTimeout(() => $("#export-view").click(), 150);
   }));
+}
+
+/* Por ahora sólo el año en curso: los reportes arrancan este año. */
+function pintarAnios() {
+  const actual = new Date().getFullYear();
+  const select = $("#report-year");
+  if (select.options.length) return;
+  select.add(new Option(actual, actual));
+  select.onchange = pintarMeses;
+}
+
+function pintarMeses() {
+  const { entrar, aprueba } = accionesDelPerfil();
+  const anio = Number($("#report-year").value);
+  const hoy = new Date();
+  $("#months-grid").innerHTML = MESES.map((mes, i) => {
+    /* Sólo los meses cerrados. El reporte de un mes se arma al mes siguiente,
+       así que el mes en curso todavía no tiene nada que pedir. */
+    const abierto = anio > hoy.getFullYear() || (anio === hoy.getFullYear() && i >= hoy.getMonth());
+    return `<div class="month-row${abierto ? " is-future" : ""}">
+      <span class="month-name">${mes}</span>
+      <button class="month-action" type="button" data-mes="${i}" ${abierto ? "disabled" : ""}>${entrar}</button>
+      ${aprueba ? `<button class="month-action is-approve" type="button" data-aprobar="${i}" ${abierto ? "disabled" : ""}>APROBAR Y PUBLICAR</button>` : ""}
+    </div>`;
+  }).join("");
+
+  const nombre = (i) => `${MESES[i].toLowerCase()} de ${anio}`;
+  $$("[data-mes]").forEach((b) => (b.onclick = () => aviso(`El histórico mensual todavía no está conectado: falta definir de dónde sale el reporte de ${nombre(b.dataset.mes)}.`)));
+  $$("[data-aprobar]").forEach((b) => (b.onclick = () => aviso(`Aprobar y publicar todavía no está conectado: falta definir el circuito de aprobación de ${nombre(b.dataset.aprobar)}.`)));
 }
 
 /* ── Usuarios y accesos ──────────────────────────────────────────────────
@@ -474,7 +529,7 @@ function pintarMatriz(seleccion) {
   /* La matriz lista todos los clientes y todas las cuentas conectadas en
      Windsor. Cuando un cliente tiene dos perfiles de la misma red, cada uno es
      una casilla aparte con el nombre del perfil: son accesos distintos. */
-  const esAdmin = $("#f-role").value === "Administrador";
+  const esAdmin = $("#f-role").value === "Administrador" || $("#f-role").value === "PM";
   const columnas = Math.max(1, ...clientes.map((c) => c.cuentas.length));
   const matriz = $("#accounts-matrix");
   matriz.style.setProperty("--columnas", columnas);
@@ -483,16 +538,41 @@ function pintarMatriz(seleccion) {
     return;
   }
   matriz.innerHTML =
-    (esAdmin ? '<p class="form-note">El perfil de administrador ve todas las cuentas conectadas. Para dar acceso a algunas nada más, elegí otro rol.</p>' : "") +
+    (esAdmin ? '<p class="form-note">El administrador y el Project Manager ven todas las cuentas conectadas. Para dar acceso a algunas nada más, elegí Especialista o Cliente.</p>' : "") +
     clientes.map((fila) => `
       <div class="accounts-row">
-        <strong>${fila.nombre}</strong>
+        <label class="cliente-todo"><input type="checkbox" data-cliente-todo="${fila.id}" ${esAdmin ? "disabled" : ""}> <strong>${fila.nombre}</strong></label>
         ${fila.cuentas.map((cuenta) => {
           const id = `${fila.id}-${cuenta.id}`;
           const marcada = esAdmin || seleccion.includes(id);
           return `<label><input type="checkbox" data-cuenta="${id}" ${marcada ? "checked" : ""} ${esAdmin ? "disabled" : ""}> ${cuenta.titulo}</label>`;
         }).join("")}
       </div>`).join("");
+  conectarMatriz();
+}
+
+/* El tilde del cliente refleja lo que hay debajo: marcado si están todas sus
+   cuentas, a medias si son algunas. Y al tocarlo las enciende o apaga juntas,
+   que es la forma rápida de dar un cliente entero. */
+function conectarMatriz() {
+  const deCliente = (id) => $$(`[data-cuenta^="${id}-"]`);
+  const refrescar = (id) => {
+    const cajas = deCliente(id);
+    const maestro = $(`[data-cliente-todo="${id}"]`);
+    if (!maestro || !cajas.length) return;
+    const tildadas = cajas.filter((c) => c.checked).length;
+    maestro.checked = tildadas === cajas.length;
+    maestro.indeterminate = tildadas > 0 && tildadas < cajas.length;
+  };
+  $$("[data-cliente-todo]").forEach((maestro) => {
+    const id = maestro.dataset.clienteTodo;
+    refrescar(id);
+    maestro.onchange = () => {
+      deCliente(id).forEach((c) => (c.checked = maestro.checked));
+      maestro.indeterminate = false;
+    };
+  });
+  $$("[data-cuenta]").forEach((caja) => (caja.onchange = () => refrescar(caja.dataset.cuenta.split("-")[0])));
 }
 
 /* Al cambiar el rol se vuelve a dibujar: administrador implica todas. */
@@ -529,14 +609,17 @@ $("#user-form").onsubmit = async (e) => {
   e.preventDefault();
   const err = $("#form-error");
   const usuario = $("#f-user").value.trim(), nombre = $("#f-name").value.trim();
+  const correo = $("#f-mail").value.trim();
   if (!usuario || !nombre) { err.textContent = "El nombre de usuario y el nombre son obligatorios."; err.hidden = false; return; }
+  /* El correo dejó de ser opcional: sin él no hay forma de recuperar el acceso. */
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) { err.textContent = "Hace falta un correo válido: es por donde se recupera la contraseña."; err.hidden = false; return; }
 
   const rol = $("#f-role").value;
-  const cuentas = rol === "Administrador" ? [] : seleccionActual();
-  const alcance = rol === "Administrador"
+  const veTodo = rol === "Administrador" || rol === "PM";
+  const cuentas = veTodo ? [] : seleccionActual();
+  const alcance = veTodo
     ? "Todas las cuentas"
     : cuentas.length ? `${cuentas.length} cuenta${cuentas.length === 1 ? "" : "s"}` : "Sin cuentas";
-  const correo = $("#f-mail").value.trim();
 
   try {
     if (idEditando) {
@@ -589,9 +672,15 @@ function entrar(datos) {
   sesion = datos;
   document.body.classList.remove("sin-sesion");
   $("#login-screen").hidden = true;
+  mostrarTarjeta("login-form");
   $("#profile-name").textContent = datos.nombre || datos.usuario;
-  $("#profile-role").textContent = datos.rol === "Administrador" ? "Administrador del panel"
-    : datos.rol === "Especialista" ? "Especialista de Paid Media" : "Cliente";
+  const TITULO_ROL = {
+    Administrador: "Administrador del panel",
+    PM: "Project Manager",
+    Especialista: "Especialista de Paid Media",
+    Cliente: "Cliente",
+  };
+  $("#profile-role").textContent = TITULO_ROL[datos.rol] || datos.rol;
   // Sólo un administrador entra a la sección de accesos.
   $('[data-view="users"]').hidden = datos.rol !== "Administrador";
   cargarUsuarios();
@@ -630,10 +719,72 @@ $("#login-form").onsubmit = async (e) => {
   }
 };
 
+/* ── Ver la contraseña mientras se escribe ───────────────────────────── */
+$$("[data-ver]").forEach((b) => (b.onclick = () => {
+  const campo = $(`#${b.dataset.ver}`);
+  const mostrando = campo.type === "text";
+  campo.type = mostrando ? "password" : "text";
+  b.setAttribute("aria-pressed", String(!mostrando));
+  b.setAttribute("aria-label", mostrando ? "Mostrar la contraseña" : "Ocultar la contraseña");
+  campo.focus();
+}));
+
+/* ── Recuperar la contraseña ─────────────────────────────────────────── */
+function mostrarTarjeta(cual) {
+  ["login-form", "recuperar-form", "restablecer-form"].forEach((id) => ($(`#${id}`).hidden = id !== cual));
+}
+$("#ir-recuperar").onclick = () => {
+  $("#recuperar-error").hidden = true;
+  $("#recuperar-ok").hidden = true;
+  mostrarTarjeta("recuperar-form");
+};
+$("#volver-login").onclick = () => mostrarTarjeta("login-form");
+
+$("#recuperar-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const err = $("#recuperar-error"), ok = $("#recuperar-ok");
+  err.hidden = true; ok.hidden = true;
+  try {
+    const r = await api("/api/recuperar", { method: "POST", body: { quien: $("#recuperar-quien").value } });
+    ok.textContent = r.mensaje;
+    ok.hidden = false;
+  } catch (error) {
+    err.textContent = error.message;
+    err.hidden = false;
+  }
+};
+
+/* El enlace del correo trae el testigo en la dirección. */
+const testigoRecuperacion = new URLSearchParams(location.search).get("restablecer");
+
+$("#restablecer-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const err = $("#restablecer-error");
+  const a = $("#nueva-clave").value, b = $("#nueva-clave-2").value;
+  err.hidden = true;
+  if (a.length < 12) { err.textContent = "Mínimo 12 caracteres."; err.hidden = false; return; }
+  if (a !== b) { err.textContent = "Las dos contraseñas no coinciden."; err.hidden = false; return; }
+  try {
+    const r = await api("/api/restablecer", { method: "POST", body: { testigo: testigoRecuperacion, clave: a } });
+    history.replaceState(null, "", location.pathname);
+    mostrarTarjeta("login-form");
+    entrar(r.sesion);
+    aviso("Contraseña cambiada. Ya estás dentro.");
+  } catch (error) {
+    err.textContent = error.message;
+    err.hidden = false;
+  }
+};
+
 /* Al cargar se pregunta si la cookie sigue valiendo: así recargar la página no
    obliga a escribir la contraseña otra vez. */
 (async () => {
   document.body.classList.add("sin-sesion");
+  if (testigoRecuperacion) {
+    mostrarTarjeta("restablecer-form");
+    $("#login-screen").hidden = false;
+    return;
+  }
   try {
     entrar((await api("/api/sesion")).sesion);
   } catch (e) {

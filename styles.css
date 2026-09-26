@@ -403,7 +403,7 @@ td.negative { color: var(--danger); }
 .nav-vacio { color: var(--lila); }
 
 /* Botones de acción: violeta oscuro el principal, eléctrico el secundario. */
-.primary-action, .secondary-action, .apply-button {
+.primary-action, .apply-button {
   background: var(--violeta-oscuro); box-shadow: 0 7px 18px rgba(51, 29, 117, .24);
 }
 .primary-action.ghost { background: var(--violeta); }
@@ -423,3 +423,201 @@ td.negative { color: var(--danger); }
     linear-gradient(155deg, #331d75 0%, #1d1140 45%, var(--negro) 100%);
 }
 .login-brand { color: var(--violeta-oscuro); }
+
+/* ── Reportes: histórico mensual ─────────────────────────────────────────
+   La tarjeta blanca lleva sólo el título y el año; los meses van debajo,
+   sobre el fondo, como en el diseño. */
+.history-panel { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.history-panel h2 { margin: 0; font-size: 20px; }
+.year-picker select {
+  min-height: 42px; min-width: 220px; padding: 0 16px; text-align: center;
+  border: 1px solid var(--negro); border-radius: 999px; background: #fff;
+  font-size: 12px; font-weight: 600; letter-spacing: .08em;
+}
+
+.months-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(6, auto); grid-auto-flow: column; gap: 12px 44px; margin-top: 20px; }
+.month-row { display: flex; align-items: center; gap: 12px; }
+.month-name {
+  flex: 1; min-width: 120px; min-height: 46px; display: flex; align-items: center; padding: 0 18px;
+  border: 1px solid var(--border); border-radius: 12px; background: #fff;
+  font-size: 12px; font-weight: 600; letter-spacing: .06em;
+}
+.month-action {
+  min-height: 46px; min-width: 150px; padding: 0 18px; border: 0; border-radius: 12px;
+  background: var(--violeta); color: #fff; font-size: 12px; font-weight: 700; letter-spacing: .06em;
+}
+.month-action:hover:not(:disabled) { background: #8a55f5; }
+/* Aprobar y publicar es el paso que cierra el circuito: se distingue del resto
+   con un violeta apagado para que no compita con la acción de todos los días. */
+.month-action.is-approve { min-width: 168px; background: #9b7fa8; line-height: 1.2; }
+.month-action.is-approve:hover:not(:disabled) { background: #8a6d97; }
+.month-row.is-future .month-name { color: var(--muted-ink); background: transparent; }
+.month-action:disabled { background: var(--canvas-strong); color: var(--muted-ink); }
+
+@media (max-width: 1180px) { .months-grid { grid-template-columns: 1fr; grid-template-rows: none; grid-auto-flow: row; } }
+@media (max-width: 700px) {
+  .history-panel { flex-direction: column; align-items: flex-start; }
+  .year-picker select { min-width: 100%; }
+  .month-row { flex-wrap: wrap; }
+  .month-action, .month-action.is-approve { flex: 1; min-width: 0; }
+}
+
+/* ── Cortina de carga ────────────────────────────────────────────────────
+   Mientras se consulta Windsor el contenido queda tapado: ver el panel a
+   medio pintar hace pensar que algo se rompió. Las barras crecen como un
+   gráfico armándose, que es justamente lo que está pasando detrás. */
+.cargando {
+  position: fixed; inset: 0; left: 74px; z-index: 30; display: grid; place-items: center;
+  background: rgba(255, 255, 255, .88); backdrop-filter: blur(3px);
+}
+.cargando[hidden] { display: none; }
+.main-content { position: relative; }
+.cargando-caja { display: grid; justify-items: center; gap: 18px; padding: 0 24px; text-align: center; }
+.cargando-barras { display: flex; align-items: flex-end; gap: 7px; height: 54px; }
+.cargando-barras i {
+  width: 12px; height: 100%; border-radius: 4px 4px 2px 2px;
+  background: var(--violeta); transform-origin: bottom;
+  animation: escarbando 1.1s ease-in-out infinite;
+}
+.cargando-barras i:nth-child(2) { animation-delay: .12s; background: var(--violeta-oscuro); }
+.cargando-barras i:nth-child(3) { animation-delay: .24s; }
+.cargando-barras i:nth-child(4) { animation-delay: .36s; background: var(--violeta-oscuro); }
+.cargando-barras i:nth-child(5) { animation-delay: .48s; }
+@keyframes escarbando {
+  0%, 100% { transform: scaleY(.28); opacity: .55; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+.cargando-frase { margin: 0; max-width: 440px; font-size: 18px; font-weight: 600; color: var(--negro); }
+.cargando-caja small { color: var(--muted-ink); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cargando-barras i { animation: none; transform: scaleY(.7); }
+}
+@media (max-width: 700px) { .cargando { left: 0; } }
+.cargando-frase { transition: opacity 180ms ease; }
+
+/* El isotipo de Emisarios: negro sobre claro, blanco sobre el violeta. */
+.brand-mark img { display: block; width: auto; height: 30px; }
+.login-brand .brand-mark img { height: 26px; }
+
+/* ── Tabla de rendimiento: lectura de columnas ───────────────────────────
+   La primera columna es la que se queda fija; antes la regla tomaba también
+   la primera celda de la fila de subtítulos y eso corría todo un lugar. */
+.performance-panel th:first-child, .performance-panel td:first-child { position: static; min-width: 0; }
+.performance-panel th.col-nombre, .performance-panel tbody td:first-child {
+  position: sticky; left: 0; z-index: 2; min-width: 280px; text-align: left; background: #fff;
+}
+.performance-panel .subhead th.col-nombre { background: #fbf9fd; }
+
+/* Filas más bajas: el aire de más no ayudaba a leer, estorbaba. */
+.performance-panel th, .performance-panel td { padding: 6px 12px; }
+.performance-panel thead th { padding: 8px 12px; }
+.row-toggle { min-height: 26px; }
+.level-ad td:first-child { padding-left: 46px; }
+
+/* Cada indicador arranca con una línea que baja por toda la tabla, para que
+   se vea de un vistazo dónde empieza y dónde termina cada grupo. */
+.performance-panel th.metric-group,
+.performance-panel .subhead th.ini-grupo,
+.performance-panel tbody td.ini-grupo { border-left: 1px solid var(--border); }
+.performance-panel th.metric-group { text-align: center !important; color: var(--negro); font-size: 12px; font-weight: 700; }
+.performance-panel .subhead th { font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+.metric-toggle { min-width: 22px; min-height: 22px; margin-left: 6px; border-radius: 6px; font-size: 11px; vertical-align: middle; }
+
+/* El botón de columnas se había quedado con el fondo violeta oscuro y el texto
+   oscuro encima: es un botón secundario y va en blanco con borde. */
+.secondary-action { color: var(--violeta-oscuro); background: #fff; border: 1px solid var(--border); box-shadow: none; }
+.secondary-action:hover { border-color: var(--violeta-oscuro); background: var(--lila); }
+
+/* ── Estado de las campañas ──────────────────────────────────────────────
+   El punto dice de un vistazo si la campaña está corriendo; los chips de
+   arriba dejan quedarse sólo con las activas o sólo con las apagadas. */
+.campaign-states { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 4px; }
+.estado-chip {
+  min-height: 30px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px;
+  background: #fff; color: var(--muted-ink); font-size: 12px;
+}
+.estado-chip b { color: var(--ink); font-weight: 700; }
+.estado-chip.active { border-color: var(--violeta-oscuro); background: var(--lila); color: var(--violeta-oscuro); }
+.estado-chip.active b { color: var(--violeta-oscuro); }
+.estado-punto {
+  display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%;
+  background: #22a06b; vertical-align: middle;
+}
+.estado-apagada { background: #b9b2c6; }
+.estado-desconocido { background: transparent; border: 1px solid #b9b2c6; }
+
+/* Icono de cada métrica en las vistas orgánicas. */
+.kpi-label { display: inline-flex; align-items: center; gap: 7px; }
+.kpi-icono svg { width: 15px; height: 15px; fill: none; stroke: var(--violeta-oscuro); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Campo de contraseña con el ojo para ver lo que se escribe. */
+.campo-clave { position: relative; display: block; }
+.campo-clave input { width: 100%; padding-right: 44px; }
+.ver-clave {
+  position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+  width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent;
+}
+.ver-clave::before {
+  content: ""; display: block; width: 20px; height: 20px; margin: auto;
+  background: currentColor; color: var(--muted-ink);
+  -webkit-mask: var(--ojo) center / contain no-repeat; mask: var(--ojo) center / contain no-repeat;
+}
+.ver-clave[aria-pressed="true"]::before { color: var(--violeta-oscuro); -webkit-mask-image: var(--ojo-tachado); mask-image: var(--ojo-tachado); }
+:root {
+  --ojo: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.8"><path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/></svg>');
+  --ojo-tachado: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.8"><path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/><path d="M4 4l16 16"/></svg>');
+}
+.login-nota { margin: 0; color: var(--muted-ink); font-size: 13px; line-height: 1.5; }
+.form-ok { margin: 0; padding: 10px 12px; border-radius: 9px; background: var(--lila); color: var(--violeta-oscuro); font-size: 12px; line-height: 1.5; }
+.link-button { border: 0; background: transparent; color: var(--violeta-oscuro); font-size: 12px; text-decoration: underline; }
+
+/* `display: grid` en .login-card le gana al `hidden` del navegador, así que
+   las tres tarjetas del acceso se veían a la vez. */
+.login-card[hidden] { display: none; }
+
+/* ── Desgloses de Google: orden, paginado y gráfico ──────────────────── */
+.extra-table th { padding: 0; }
+.orden-col {
+  width: 100%; min-height: 34px; padding: 0 10px; border: 0; background: transparent;
+  color: var(--muted-ink); font-size: 11px; font-weight: 600; text-align: right; white-space: nowrap;
+}
+.extra-table th:first-child .orden-col { text-align: left; }
+.orden-col:hover { color: var(--violeta-oscuro); background: var(--canvas-strong); }
+.orden-col.activa { color: var(--violeta-oscuro); }
+
+.paginado { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-top: 12px; color: var(--muted-ink); font-size: 12px; }
+.paginado select { min-height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--ink); }
+.paginado-botones { display: flex; align-items: center; gap: 4px; }
+.paginado-botones button {
+  min-width: 30px; min-height: 30px; border: 1px solid var(--border); border-radius: 8px;
+  background: #fff; color: var(--violeta-oscuro);
+}
+.paginado-botones button:disabled { color: #c3bcd0; background: var(--canvas); }
+.paginado-botones b { padding: 0 8px; color: var(--ink); }
+
+.grafico-extra { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.series-control-row { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 10px; font-size: 12px; }
+.series-control-row label { display: inline-flex; align-items: center; gap: 7px; }
+.series-control-row i { width: 10px; height: 10px; border-radius: 3px; }
+.series-control-row select { min-height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+/* El alto lo manda el viewBox: cuando el texto crece, el gráfico crece con él
+   en vez de encogerse para entrar en un alto fijo. */
+.barras-extra { width: 100%; height: auto; overflow: visible; }
+.texto-escala { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; color: var(--muted-ink); }
+.texto-escala b { min-width: 42px; text-align: center; color: var(--ink); }
+.texto-escala button { min-width: 30px; min-height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--ink); font-size: 15px; line-height: 1; }
+.texto-escala button:disabled { opacity: .4; }
+.series-control-row .series-values { font-size: 12px; }
+/* Una tarjeta sin serie diaria no se lleva al gráfico: no se comporta como botón. */
+.kpi-card.is-static { cursor: default; }
+/* En la tabla de rendimiento el punto va pegado al nombre, no al borde. */
+.row-toggle .estado-punto { margin-left: 4px; }
+
+/* Tilde por cliente en la matriz de accesos. */
+.cliente-todo { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.cliente-todo strong { font-weight: 700; }
+/* Los tres estados, con los mismos colores que usan las plataformas. */
+.estado-pausada { background: #b9b2c6; }
+.estado-eliminada { background: transparent; border: 1.5px solid var(--danger); }
+.extra-table td .estado-punto { margin-right: 8px; }

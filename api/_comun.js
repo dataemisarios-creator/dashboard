@@ -10,10 +10,18 @@
  */
 
 import { createHmac, pbkdf2Sync, randomBytes, timingSafeEqual, webcrypto } from 'node:crypto';
-import { list, put } from '@vercel/blob';
+import { del, list, put } from '@vercel/blob';
 
 const ITERACIONES = 210000;
-const RUTA_BLOB = 'accesos/usuarios.json';
+/* Cada versión de la lista se guarda con su propia marca de tiempo en el
+   nombre. Escribir siempre en la misma dirección parecía más prolijo, pero la
+   CDN servía la copia anterior y un usuario recién creado tardaba en aparecer,
+   distinto en cada servidor. Con un nombre nuevo por versión no hay caché que
+   valga: se lista por prefijo, se lee la más reciente y se borran las viejas. */
+const PREFIJO_BLOB = 'accesos/usuarios-';
+/* La primera versión guardaba todo en esta única dirección. Se sigue leyendo
+   para no perder los usuarios que se crearon antes del cambio. */
+const RUTA_VIEJA = 'accesos/usuarios.json';
 const HORAS_SESION = 12;
 
 export function secreto() {
@@ -148,17 +156,38 @@ function semilla() {
 
 const hayBlob = () => !!process.env.BLOB_READ_WRITE_TOKEN?.trim();
 
+async function versiones() {
+  const { blobs } = await list({ prefix: PREFIJO_BLOB });
+  return blobs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+}
+
+async function leerBlob(url) {
+  const respuesta = await fetch(url, { cache: 'no-store' });
+  if (!respuesta.ok) return null;
+  const lista = JSON.parse(await descifrar(Buffer.from(await respuesta.arrayBuffer())));
+  return Array.isArray(lista) && lista.length ? lista : null;
+}
+
 export async function leerUsuarios() {
   if (!hayBlob()) return semilla();
   try {
-    const { blobs } = await list({ prefix: RUTA_BLOB, limit: 1 });
-    if (!blobs.length) return semilla();
-    const respuesta = await fetch(blobs[0].url, { cache: 'no-store' });
-    if (!respuesta.ok) return semilla();
-    const texto = await descifrar(Buffer.from(await respuesta.arrayBuffer()));
-    const lista = JSON.parse(texto);
-    // Una lista vacía sería quedarse sin ningún acceso: se vuelve a la semilla.
-    return Array.isArray(lista) && lista.length ? lista : semilla();
+    const guardadas = await versiones();
+    let lista = guardadas.length ? await leerBlob(guardadas[0].url) : null;
+
+    /* Rescate de la versión anterior del almacén: mientras exista, se fusiona
+       con la lista actual y después se borra. Es una sola pasada; cuando ya no
+       quede el blob viejo, esta rama no vuelve a entrar. */
+    const { blobs: viejos } = await list({ prefix: RUTA_VIEJA, limit: 1 });
+    if (viejos.length) {
+      const previa = (await leerBlob(viejos[0].url)) || [];
+      const conocidos = new Set((lista || []).map((u) => String(u.usuario).toLowerCase()));
+      const rescatados = previa.filter((u) => !conocidos.has(String(u.usuario).toLowerCase()));
+      if (rescatados.length || !lista) lista = [...(lista || []), ...rescatados];
+      if (lista.length) await guardarUsuarios(lista).catch(() => {});
+      await del(viejos[0].url).catch(() => {});
+    }
+
+    return lista && lista.length ? lista : semilla();
   } catch {
     return semilla();
   }
@@ -166,34 +195,94 @@ export async function leerUsuarios() {
 
 export async function guardarUsuarios(lista) {
   if (!hayBlob()) throw new Error('No hay almacenamiento conectado para guardar los accesos.');
-  await put(RUTA_BLOB, await cifrar(JSON.stringify(lista)), {
+  const viejas = await versiones();
+  await put(`${PREFIJO_BLOB}${Date.now()}.json`, await cifrar(JSON.stringify(lista)), {
     access: 'public',
     addRandomSuffix: false,
     allowOverwrite: true,
     contentType: 'application/octet-stream',
     cacheControlMaxAge: 0,
   });
+  /* Se conserva la anterior por si hiciera falta volver atrás a mano; del resto
+     no queda nada. Si la limpieza falla no se rompe el guardado. */
+  const aBorrar = viejas.slice(1).map((b) => b.url);
+  if (aBorrar.length) await del(aBorrar).catch(() => {});
 }
 
 /* ────────────────────────────────────────────────────────── permisos */
 
 /* El acceso se da por cuenta y por plataforma: cada usuario guarda una lista de
-   claves «cliente-cuenta». El perfil de administrador ve todo lo conectado.
-   Los permisos se releen del almacén en cada pedido y no salen de la cookie:
-   quitarle una cuenta a alguien tiene efecto sin esperar a que cierre sesión. */
+   claves «cliente-cuenta». Los permisos se releen del almacén en cada pedido y
+   no salen de la cookie: quitarle una cuenta a alguien tiene efecto sin esperar
+   a que cierre sesión. */
 export async function usuarioDeSesion(sesion) {
   const usuarios = await leerUsuarios();
   return usuarios.find((u) => u.id === sesion.id) || null;
 }
 
+/* El Project Manager ve lo mismo que el administrador. La diferencia está en
+   otro lado: no puede dar ni quitar accesos, y eso lo decide `usuarios.js`. */
+const VEN_TODO = new Set(['Administrador', 'PM']);
+
 export function permisosDe(usuario) {
   if (!usuario || usuario.activo === false) return new Set();
-  if (usuario.rol === 'Administrador') return 'todas';
+  if (VEN_TODO.has(usuario.rol)) return 'todas';
   return new Set(Array.isArray(usuario.cuentas) ? usuario.cuentas : []);
 }
 
 export const puedeVer = (permisos, cliente, cuenta) =>
   permisos === 'todas' || permisos.has(`${cliente}-${cuenta}`);
+
+/* ──────────────────────────────────────────── recuperar contraseña */
+
+/* El testigo lleva el id, el vencimiento y un pedazo del hash actual. Eso lo
+   vuelve de un solo uso sin guardar nada: apenas la contraseña cambia, el hash
+   cambia y la firma del enlace deja de validar. */
+const HORAS_TESTIGO = 1;
+
+export function testigoDeRecuperacion(usuario) {
+  const cuerpo = Buffer.from(JSON.stringify({
+    id: usuario.id,
+    vence: Date.now() + HORAS_TESTIGO * 3600 * 1000,
+    sello: String(usuario.hash).slice(-12),
+  })).toString('base64url');
+  return `${cuerpo}.${createHmac('sha256', secreto()).update(`recuperar:${cuerpo}`).digest('base64url')}`;
+}
+
+export async function usuarioDelTestigo(testigo) {
+  const corte = String(testigo || '').lastIndexOf('.');
+  if (corte < 1) return null;
+  const cuerpo = testigo.slice(0, corte);
+  const firma = testigo.slice(corte + 1);
+  const esperada = createHmac('sha256', secreto()).update(`recuperar:${cuerpo}`).digest('base64url');
+  if (firma.length !== esperada.length) return null;
+  if (!timingSafeEqual(Buffer.from(firma), Buffer.from(esperada))) return null;
+  try {
+    const datos = JSON.parse(Buffer.from(cuerpo, 'base64url').toString());
+    if (Date.now() > datos.vence) return null;
+    const usuario = (await leerUsuarios()).find((u) => u.id === datos.id);
+    if (!usuario || String(usuario.hash).slice(-12) !== datos.sello) return null;
+    return usuario;
+  } catch {
+    return null;
+  }
+}
+
+/** Si no hay proveedor de correo configurado, se dice; no se finge un envío. */
+export const puedeEnviarCorreo = () =>
+  !!process.env.RESEND_API_KEY?.trim() && !!process.env.CORREO_REMITENTE?.trim();
+
+export async function enviarCorreo({ para, asunto, html }) {
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ from: process.env.CORREO_REMITENTE, to: [para], subject: asunto, html }),
+  });
+  if (!r.ok) throw new Error(`El proveedor de correo respondió ${r.status}.`);
+}
 
 /** Lo que se le manda al navegador: nunca el hash. */
 export const sinHash = ({ hash, ...resto }) => resto;
