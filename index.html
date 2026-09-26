@@ -147,6 +147,10 @@
             </span>
             <span id="connection-text">Datos Sincronizados</span>
           </button>
+          <button class="refrescar" id="refrescar" type="button" title="Volver a consultar a Windsor con los mismos filtros">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-.6 4" /><path d="M20 4v7h-7" /></svg>
+            <span>Actualizar</span>
+          </button>
         </header>
 
         <!-- ─────────────── Vista: dashboard de plataforma ─────────────── -->
@@ -222,18 +226,13 @@
                 </div>
               </div>
 
-              <div class="popover-wrap">
-                <button class="filter-control button-control" id="views-trigger" type="button" aria-expanded="false">
-                  <span>Vista</span><strong id="views-summary">Predeterminada</strong><b>⌄</b>
-                </button>
-                <div class="popover views-popover" id="views-popover" hidden>
-                  <div class="popover-title"><strong>Vistas guardadas</strong></div>
-                  <div id="views-list"></div>
-                  <div class="views-actions">
-                    <button type="button" class="apply-button" id="view-save">Guardar vista actual</button>
-                    <button type="button" class="link-action" id="view-delete" hidden>Eliminar esta vista</button>
-                  </div>
-                </div>
+              <label class="filter-control" id="views-wrap">
+                <span>Vista</span>
+                <select id="views-select"></select>
+              </label>
+              <div class="views-actions">
+                <button type="button" class="link-action" id="view-save">Guardar vista</button>
+                <button type="button" class="link-action peligro" id="view-delete" hidden>Eliminar</button>
               </div>
 
               <button class="filters-apply" id="apply-filters" type="button">APLICAR FILTROS</button>

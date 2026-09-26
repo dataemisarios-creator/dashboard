@@ -122,6 +122,17 @@ function estadoDeFila(fila, campo = "campaign_status") {
   return "pausada";
 }
 
+/* Una entidad no puede entregar más que la que la contiene: una palabra clave
+   habilitada en un grupo pausado está, en los hechos, pausada. Vale el peor de
+   los dos estados, que es lo que muestra la plataforma. */
+const GRAVEDAD = { activa: 0, desconocido: 1, pausada: 2, eliminada: 3 };
+function estadoEfectivo(fila, campo, campoPadre) {
+  const propio = estadoDeFila(fila, campo);
+  if (!campoPadre || !fila[campoPadre]) return propio;
+  const padre = estadoDeFila(fila, campoPadre);
+  return GRAVEDAD[padre] > GRAVEDAD[propio] ? padre : propio;
+}
+
 const TITULO_ESTADO = { activa: "Activa", pausada: "En pausa", eliminada: "Eliminada", desconocido: "Estado no informado" };
 const punto = (estado) => (estado ? `<i class="estado-punto estado-${estado}" title="${TITULO_ESTADO[estado]}"></i>` : "");
 
@@ -1045,9 +1056,13 @@ const POR_PAGINA = [10, 25, 50, 100];
 const ESCALAS_TEXTO = [0.85, 1, 1.2, 1.45, 1.75, 2.1];
 
 /* Cada tabla recuerda su orden y su página por separado. */
+/* Las tablas que informan el estado de cada fila —hoy las palabras clave—
+   se pueden filtrar por estado, igual que las campañas y como se hace en la
+   propia plataforma. */
+const ESTADOS_EXTRA=[["todas","Todas"],["activa","Habilitadas"],["pausada","En pausa"],["eliminada","Eliminadas"]];
 const estadoExtra = {};
 function ajustesDe(id) {
-  if (!estadoExtra[id]) estadoExtra[id] = { orden: "spend", desc: true, porPagina: 10, pagina: 1, m1: "clicks", m2: "conversions", valores: {}, escala: 1 };
+  if (!estadoExtra[id]) estadoExtra[id] = { orden: "spend", desc: true, porPagina: 10, pagina: 1, m1: "clicks", m2: "conversions", valores: {}, escala: 1, estado: "todas" };
   return estadoExtra[id];
 }
 
@@ -1058,7 +1073,7 @@ function filasDeExtra(extra) {
       const spend = num(f.spend), conversions = num(f.conversions);
       return {
         nombre: f[extra.campo] || "—",
-        estado: extra.estado ? estadoDeFila(f, extra.estado) : null,
+        estado: extra.estado ? estadoEfectivo(f, extra.estado, extra.estadoPadre) : null,
         clicks, impressions, spend, conversions,
         ctr: impressions ? (clicks / impressions) * 100 : 0,
         cpa: conversions ? spend / conversions : null,
@@ -1086,8 +1101,12 @@ function formatoDe(id) {
 
 function tablaExtra(extra) {
   const ajustes = ajustesDe(extra.id);
-  const filas = ordenar(filasDeExtra(extra), ajustes);
-  if (!filas.length) return "";
+  const todas = filasDeExtra(extra);
+  const filas = ordenar(extra.estado && ajustes.estado !== "todas" ? todas.filter((f) => f.estado === ajustes.estado) : todas, ajustes);
+  /* Sin filas de origen no hay tabla. Si las hay pero el filtro no deja
+     ninguna, la tabla se queda con sus chips: si no, el panel desaparecería y
+     no habría forma de volver atrás. */
+  if (!todas.length) return "";
   const paginas = Math.max(1, Math.ceil(filas.length / ajustes.porPagina));
   if (ajustes.pagina > paginas) ajustes.pagina = paginas;
   const desde = (ajustes.pagina - 1) * ajustes.porPagina;
@@ -1097,13 +1116,15 @@ function tablaExtra(extra) {
   const cabecera = COLUMNAS_EXTRA.map((c) =>
     `<th><button class="orden-col${ajustes.orden === c.id ? " activa" : ""}" data-orden="${extra.id}:${c.id}" type="button">${c.id === "nombre" ? extra.columna : c.titulo}${flecha(c.id)}</button></th>`).join("");
 
-  const cuerpo = visibles.map((f) => `<tr>
+  const cuerpo = !filas.length
+    ? `<tr><td colspan="${COLUMNAS_EXTRA.length}">No hay filas con ese estado en este período.</td></tr>`
+    : visibles.map((f) => `<tr>
       <td>${punto(f.estado)}${f.nombre}</td>
       ${COLUMNAS_EXTRA.slice(1).map((c) => `<td>${f[c.id] === null ? "—" : fmt(formatoDe(c.id), f[c.id])}</td>`).join("")}
     </tr>`).join("");
 
   const nf = new Intl.NumberFormat("es-AR");
-  const pie = `<div class="paginado">
+  const pie = !filas.length ? "" : `<div class="paginado">
       <label>Ver <select data-por-pagina="${extra.id}">${POR_PAGINA.map((n) => `<option value="${n}" ${n === ajustes.porPagina ? "selected" : ""}>${n}</option>`).join("")}</select> por página</label>
       <span>${nf.format(desde + 1)} a ${nf.format(desde + visibles.length)} de ${nf.format(filas.length)}</span>
       <span class="paginado-botones">
@@ -1117,7 +1138,14 @@ function tablaExtra(extra) {
 
   const grafico = CON_GRAFICO.has(extra.id) ? bloqueGrafico(extra, ajustes) : "";
 
-  return `<section class="panel"><div class="panel-heading"><div><p class="eyebrow">GOOGLE ADS</p><h2>${extra.titulo}</h2></div></div>
+  /* Los conteos salen de todas las filas, no de las filtradas: si no, el chip
+     elegido mostraría su propio total y los demás quedarían en cero. */
+  const chips = extra.estado ? `<div class="estados-extra">${ESTADOS_EXTRA.map(([id, texto]) => {
+      const cuantas = id === "todas" ? todas.length : todas.filter((f) => f.estado === id).length;
+      return `<button class="estado-chip ${id === ajustes.estado ? "active" : ""}" data-estado-extra="${extra.id}:${id}" type="button">${texto} <b>${cuantas}</b></button>`;
+    }).join("")}</div>` : "";
+
+  return `<section class="panel"><div class="panel-heading"><div><p class="eyebrow">GOOGLE ADS</p><h2>${extra.titulo}</h2></div>${chips}</div>
     <div class="table-scroll"><table class="module-table extra-table"><thead><tr>${cabecera}</tr></thead><tbody>${cuerpo}</tbody></table></div>
     ${pie}${grafico}</section>`;
 }
@@ -1204,6 +1232,13 @@ function conectarExtras() {
     // de mayor a menor si son números y de la A a la Z si es texto.
     if (a.orden === col) a.desc = !a.desc;
     else { a.orden = col; a.desc = col !== "nombre"; }
+    a.pagina = 1;
+    renderAdditionalModules();
+  }));
+  document.querySelectorAll("[data-estado-extra]").forEach((b) => (b.onclick = () => {
+    const [id, estado] = b.dataset.estadoExtra.split(":");
+    const a = ajustesDe(id);
+    a.estado = estado;
     a.pagina = 1;
     renderAdditionalModules();
   }));
@@ -1384,24 +1419,35 @@ async function cargarVistas() {
 }
 
 function pintarVistas() {
-  const lista = vistasDeAqui();
-  const actual = lista.find(v => v.id === vistaAbierta);
-  document.querySelector("#views-summary").textContent = actual ? actual.nombre : "Predeterminada";
-  document.querySelector("#views-list").innerHTML = lista.length
-    ? lista.map(v => `<button type="button" class="view-option${v.id === vistaAbierta ? " activa" : ""}" data-vista="${v.id}">${v.nombre}</button>`).join("")
-    : '<p class="campaign-empty">Todavía no guardaste ninguna vista para esta cuenta.</p>';
+  const lista=vistasDeAqui();
+  const sel=document.querySelector("#views-select");
+  if(!sel) return;
+  /* Una sola vista a la vez: es un selector, no una lista de casillas. */
+  sel.innerHTML=`<option value="">Predeterminada</option>`+
+    lista.map(v=>`<option value="${v.id}" ${v.id===vistaAbierta?"selected":""}>${v.nombre}</option>`).join("");
+  sel.value=lista.some(v=>v.id===vistaAbierta)?vistaAbierta:"";
   // Eliminar sólo se ofrece estando dentro de una vista guardada.
-  document.querySelector("#view-delete").hidden = !actual;
-  document.querySelectorAll("[data-vista]").forEach(b => (b.onclick = () => abrirVista(b.dataset.vista)));
+  document.querySelector("#view-delete").hidden=!sel.value;
 }
 
 function abrirVista(id) {
-  const v = VISTAS_GUARDADAS.vistas.find(x => x.id === id);
-  if (!aplicarVista(v)) return;
-  document.querySelector("#views-popover").hidden = true;
+  if(!id){ volverAPredeterminada(); return; }
+  const v=VISTAS_GUARDADAS.vistas.find(x=>x.id===id);
+  if(!aplicarVista(v)) return;
   recordarUltima(id);
   pintarVistas();
   cargarDatos();
+  if(window.PanelEmisarios) window.PanelEmisarios.filtrosAplicados();
+}
+
+/* Volver a la de fábrica es olvidar la vista abierta y rearmar la plataforma
+   desde cero, que es justo lo que hace setPlatform. */
+function volverAPredeterminada() {
+  vistaAbierta=null;
+  delete VISTAS_GUARDADAS.ultima[claveDeVista()];
+  recordarUltima(null);
+  delete state.kpis[DATOS.tipo];
+  setPlatform(state.platform);
 }
 
 function recordarUltima(id) {
@@ -1416,14 +1462,13 @@ function bindPopover(trigger,pop){const t=document.querySelector(trigger),p=docu
 
 document.querySelectorAll("[data-platform]").forEach(b=>b.onclick=()=>setPlatform(b.dataset.platform));
 document.querySelector("#agregar-kpi").onclick=openKpiDialog;
-bindPopover("#views-trigger","#views-popover");
+document.querySelector("#views-select").onchange=(e)=>abrirVista(e.target.value);
 document.querySelector("#view-save").onclick=()=>{
   const actual=vistasDeAqui().find(v=>v.id===vistaAbierta);
   document.querySelector("#view-name").value=actual?actual.nombre:nombreSugerido();
   document.querySelector("#view-dialog-nota").textContent=actual
     ? `Si dejás el mismo nombre se actualiza «${actual.nombre}». Cambialo para guardar una vista nueva.`
     : "Se guarda la organización del panel y los filtros de esta pantalla.";
-  document.querySelector("#views-popover").hidden=true;
   document.querySelector("#view-dialog").showModal();
 };
 document.querySelector("#view-cancel").onclick=()=>document.querySelector("#view-dialog").close();
@@ -1448,7 +1493,6 @@ document.querySelector("#view-delete").onclick=()=>{
   const actual=vistasDeAqui().find(v=>v.id===vistaAbierta);
   if(!actual) return;
   document.querySelector("#view-delete-texto").textContent=`¿Seguro que querés eliminar la vista «${actual.nombre}»? No se puede deshacer.`;
-  document.querySelector("#views-popover").hidden=true;
   document.querySelector("#view-delete-dialog").showModal();
 };
 document.querySelector("#view-delete-cancel").onclick=()=>document.querySelector("#view-delete-dialog").close();

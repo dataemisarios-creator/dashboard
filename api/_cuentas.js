@@ -38,7 +38,10 @@ const GOOGLE_METRICAS = 'spend,clicks,impressions,conversions,all_conversions,vi
 const GOOGLE = `date,campaign,advertising_channel_type,campaign_status,${GOOGLE_METRICAS}`;
 const GOOGLE_DESGLOSE = `campaign,ad_group_name,ad_group_status,ad_id,ad_group_ad_status,${GOOGLE_METRICAS}`;
 const GOOGLE_EXTRAS = [
-  { id: 'keywords', titulo: 'Palabras clave', columna: 'Palabra clave', campo: 'keyword_text', campos: `keyword_text,keyword_status,${GOOGLE_METRICAS}`, estado: 'keyword_status' },
+  /* Una palabra clave habilitada dentro de un grupo pausado no se muestra, así
+     que su estado real es el del grupo. Se piden los dos y el panel se queda
+     con el peor de ambos, que es lo que se ve en Google Ads. */
+  { id: 'keywords', titulo: 'Palabras clave', columna: 'Palabra clave', campo: 'keyword_text', campos: `keyword_text,keyword_status,ad_group_status,${GOOGLE_METRICAS}`, estado: 'keyword_status', estadoPadre: 'ad_group_status' },
   { id: 'terminos', titulo: 'Términos de búsqueda', columna: 'Término', campo: 'search_term', campos: `search_term,${GOOGLE_METRICAS}` },
   { id: 'ciudades', titulo: 'Ciudades', columna: 'Ciudad', campo: 'city', campos: `city,${GOOGLE_METRICAS}` },
   { id: 'provincias', titulo: 'Provincias', columna: 'Provincia', campo: 'region', campos: `region,${GOOGLE_METRICAS}` },

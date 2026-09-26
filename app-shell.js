@@ -122,6 +122,12 @@ function pintarConexion() {
 $("#connection").onclick = () => {
   if (window.DatosEmisarios) window.DatosEmisarios.cargar();
 };
+/* Volver a preguntarle a Windsor sin cambiar nada: los mismos filtros, datos
+   nuevos. Cambiar un filtro ya vuelve a consultar, pero no siempre hay un
+   filtro que cambiar para ver lo último. */
+$("#refrescar").onclick = () => {
+  if (window.DatosEmisarios) window.DatosEmisarios.cargar();
+};
 pintarConexion();
 
 /* ── Filtros: quedan pendientes hasta que se aplican ─────────────────── */

@@ -73,12 +73,17 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .kpi-opcion input { width: 17px; height: 17px; accent-color: var(--purple); }
 .kpi-opcion.bloqueada { opacity: .45; cursor: default; }
 /* ── Vistas guardadas ────────────────────────────────────────────── */
-.views-popover { min-width: 260px; }
-.view-option { display: block; width: 100%; min-height: 40px; padding: 8px 10px; border: 0; border-radius: 9px; background: transparent; color: var(--ink); text-align: left; }
-.view-option:hover { background: var(--canvas); }
-.view-option.activa { color: #fff; background: var(--purple); }
-.views-actions { display: grid; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+#views-wrap select { min-width: 150px; max-width: 220px; border: 0; padding: 0; color: var(--ink); background: transparent; font-size: 14px; font-weight: 600; }
+.views-actions { display: flex; gap: 12px; align-items: center; }
 .views-actions .link-action[hidden] { display: none; }
+.link-action.peligro { color: var(--danger); }
+/* El botón de actualizar acompaña al indicador de conexión sin competir con él. */
+.refrescar { display: inline-flex; gap: 6px; align-items: center; min-height: 32px; margin-left: 10px; padding: 0 11px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted-ink); font-size: 12px; }
+.refrescar svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.refrescar:hover { color: var(--purple); border-color: var(--purple); }
+.refrescar:active svg { transform: rotate(-180deg); transition: transform 300ms ease; }
+/* Los chips de estado de una tabla de desglose van en su encabezado. */
+.estados-extra { display: flex; gap: 8px; flex-wrap: wrap; }
 .dialog-body .campo { display: block; margin: 12px 0 6px; color: var(--muted-ink); font-size: 12px; }
 .dialog-body .campo input { display: block; width: 100%; min-height: 42px; margin-top: 6px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; color: var(--ink); font-size: 14px; }
 .dialog-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }

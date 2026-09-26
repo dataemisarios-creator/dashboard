@@ -96,7 +96,7 @@ export default async function handler(req, res) {
        cruzarlos con el día multiplica las filas por miles. */
     const pedirExtras = (cuenta.extras || []).map((e) =>
       consultar('all', { date_from: desde, date_to: hasta, select_accounts: cuenta.cuenta, fields: e.campos })
-        .then((filas) => ({ id: e.id, titulo: e.titulo, columna: e.columna, campo: e.campo, estado: e.estado || null, filas }))
+        .then((filas) => ({ id: e.id, titulo: e.titulo, columna: e.columna, campo: e.campo, estado: e.estado || null, estadoPadre: e.estadoPadre || null, filas }))
         .catch(() => null));
 
     const [filas, desglose, sueltas, porCampania, porConjunto, fotos, seguidores, contenido, ...extras] =
