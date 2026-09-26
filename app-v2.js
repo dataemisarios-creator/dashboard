@@ -572,6 +572,13 @@ function tipoDe(cuentaId){ const c=(DATOS.cuentasCliente||[]).find(x=>x.id===cue
 function hayComparacion(){ return state.comparison !== "none" && !!DATOS.filasComparacion.length; }
 /* Variación real de cada indicador contra el período de comparación. */
 function deltaFor(metric){ const c=totalesComparacion(); if(!c) return null; const previo=c[metric]; if(!previo) return null; return (totalesActuales()[metric]/previo-1)*100; }
+/* Si antes era cero y ahora hay algo, el porcentaje no existe —sería dividir
+   por cero— pero el dato sí: se dice «nuevo» en vez de no decir nada. */
+function esNuevo(metric){
+  const c=totalesComparacion();
+  if(!c) return false;
+  return !c[metric] && !!totalesActuales()[metric];
+}
 /* Doce entran en tres filas de cuatro con las tarjetas bajas. */
 const MAX_KPIS = 12;
 
@@ -767,7 +774,7 @@ function renderKpis() {
     const signo=delta===null?"":delta>=0?"↑":"↓";
     const clase=claseDeCambio(metric,delta);
     const estatico=SIN_SERIE.has(metric);
-    return `<button class="kpi-card ${idx>=0?"selected":""} ${estatico?"is-static":""}" draggable="true" ${estatico?`title="Este indicador no tiene serie diaria"`:""} data-metric="${metric}" data-order="${idx>=0?idx+1:""}" style="--series-color:${COLORS[Math.max(0,idx)]}"><span class="kpi-label">${iconoDeMetrica(metric)}${metricLabel(metric)}</span><div class="kpi-value">${fmt(metric,valueFor(metric))}</div>${delta===null?"":`<span class="kpi-delta ${clase}">${signo} ${Math.abs(delta).toFixed(1).replace(".",",")}% vs. comparación</span>`}${lista.length>1?`<span class="kpi-remove" data-remove="${metric}" title="Quitar esta tarjeta">Quitar</span>`:""}</button>`;
+    return `<button class="kpi-card ${idx>=0?"selected":""} ${estatico?"is-static":""}" draggable="true" ${estatico?`title="Este indicador no tiene serie diaria"`:""} data-metric="${metric}" data-order="${idx>=0?idx+1:""}" style="--series-color:${COLORS[Math.max(0,idx)]}"><span class="kpi-label">${iconoDeMetrica(metric)}${metricLabel(metric)}</span><div class="kpi-value">${fmt(metric,valueFor(metric))}</div>${delta===null?(esNuevo(metric)?`<span class="kpi-delta positive">nuevo vs. comparación</span>`:""):`<span class="kpi-delta ${clase}">${signo} ${Math.abs(delta).toFixed(1).replace(".",",")}% vs. comparación</span>`}${lista.length>1?`<span class="kpi-remove" data-remove="${metric}" title="Quitar esta tarjeta">Quitar</span>`:""}</button>`;
   }).join("");
 
   /* El botón de agregar vive en el encabezado, no en la grilla: una casilla
@@ -777,6 +784,14 @@ function renderKpis() {
     const p=currentPlatform();
     const fabrica=(p.defaults[state.objective]||p.metrics).slice(0,6);
     volver.hidden=lista.length===fabrica.length && lista.every((m,i)=>m===fabrica[i]);
+  }
+  /* Si se pidió comparar y el período elegido no tiene datos, las tarjetas se
+     quedan sin porcentaje. Conviene decir por qué en vez de dejarlas mudas. */
+  const aviso=document.querySelector("#comparacion-aviso");
+  if(aviso){
+    const sinDatos=state.comparison!=="none" && !DATOS.cargando && !DATOS.filasComparacion.length;
+    aviso.hidden=!sinDatos;
+    if(sinDatos) aviso.textContent=`Sin datos en el período de comparación (${dateText(rangoComparacion()[0])} — ${dateText(rangoComparacion()[1])}).`;
   }
   /* El botón abre el selector siempre: ahora también sirve para quitar. */
   const agregar=document.querySelector("#agregar-kpi");

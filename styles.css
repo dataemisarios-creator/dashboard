@@ -665,6 +665,8 @@ td.negative { color: var(--danger); }
 .kpi-remove:hover { color: var(--danger); }
 /* El botón de agregar va en el encabezado para que la grilla no tenga huecos. */
 .kpi-ayuda { display: inline-flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.aviso-comparacion { color: var(--danger); font-size: 12px; }
+.aviso-comparacion[hidden] { display: none; }
 .kpi-ayuda .secondary-action { min-height: 34px; padding: 0 14px; white-space: nowrap; }
 .kpi-ayuda .secondary-action:disabled { opacity: .45; }
 .link-action { border: 0; background: transparent; color: var(--purple); font-size: 12px; text-decoration: underline; }
