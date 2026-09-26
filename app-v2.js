@@ -1403,7 +1403,14 @@ function nombreSugerido() {
   const partes = [];
   partes.push(state.objective && state.objective !== TODOS_LOS_OBJETIVOS ? state.objective : "Todos los objetivos");
   partes.push(state.rapido ? NOMBRE_RAPIDO[state.rapido] : `${dateText(state.start)} a ${dateText(state.end)}`);
-  return partes.join(" · ");
+  const base = partes.join(" · ");
+  /* Dos vistas con el mismo nombre no se distinguen en la lista, así que el
+     sugerido se numera si ya existe. */
+  const usados = new Set(vistasDeAqui().map((v) => v.nombre));
+  if (!usados.has(base)) return base;
+  let n = 2;
+  while (usados.has(`${base} (${n})`)) n++;
+  return `${base} (${n})`;
 }
 
 async function pedirVistas(opciones) {
@@ -1420,17 +1427,24 @@ async function cargarVistas() {
 
 function pintarVistas() {
   const lista=vistasDeAqui();
-  const sel=document.querySelector("#views-select");
-  if(!sel) return;
-  /* Una sola vista a la vez: es un selector, no una lista de casillas. */
-  sel.innerHTML=`<option value="">Predeterminada</option>`+
-    lista.map(v=>`<option value="${v.id}" ${v.id===vistaAbierta?"selected":""}>${v.nombre}</option>`).join("");
-  sel.value=lista.some(v=>v.id===vistaAbierta)?vistaAbierta:"";
-  // Eliminar sólo se ofrece estando dentro de una vista guardada.
-  document.querySelector("#view-delete").hidden=!sel.value;
+  const trigger=document.querySelector("#views-summary");
+  if(!trigger) return;
+  const actual=lista.find(v=>v.id===vistaAbierta);
+  trigger.textContent=actual?actual.nombre:"Predeterminada";
+  /* Una sola vista a la vez: es una lista de selección, no casillas. */
+  const opcion=(id,texto)=>`<label class="view-option${id===(actual?actual.id:"")?" activa":""}">
+      <input type="radio" name="vista-elegida" value="${id}" ${id===(actual?actual.id:"")?"checked":""}> <span>${texto}</span>
+    </label>`;
+  document.querySelector("#views-list").innerHTML=
+    opcion("","Predeterminada")+lista.map(v=>opcion(v.id,v.nombre)).join("");
+  /* Actualizar y eliminar sólo tienen sentido parado en una vista guardada. */
+  document.querySelector("#view-update").hidden=!actual;
+  document.querySelector("#view-delete").hidden=!actual;
+  document.querySelectorAll('input[name="vista-elegida"]').forEach(r=>r.onchange=()=>abrirVista(r.value));
 }
 
 function abrirVista(id) {
+  document.querySelector("#views-popover").hidden=true;
   if(!id){ volverAPredeterminada(); return; }
   const v=VISTAS_GUARDADAS.vistas.find(x=>x.id===id);
   if(!aplicarVista(v)) return;
@@ -1450,6 +1464,18 @@ function volverAPredeterminada() {
   setPlatform(state.platform);
 }
 
+/* Guardar: con id actualiza la vista abierta, sin id crea una nueva. */
+async function guardarVista(id, nombre) {
+  try{
+    const r=await pedirVistas({ method:"POST", headers:{"content-type":"application/json"},
+      body: JSON.stringify({ id, nombre, cliente: DATOS.cliente, plataforma: state.platform, estado: capturarVista() }) });
+    VISTAS_GUARDADAS={ vistas:r.vistas, ultima:r.ultima, leidas:true };
+    vistaAbierta=r.guardada;
+    pintarVistas();
+    avisarVista(`Vista «${nombre}» guardada.`);
+  }catch(e){ avisarVista(e.message); }
+}
+
 function recordarUltima(id) {
   VISTAS_GUARDADAS.ultima[claveDeVista()] = id;
   pedirVistas({ method: "POST", headers: { "content-type": "application/json" },
@@ -1462,32 +1488,25 @@ function bindPopover(trigger,pop){const t=document.querySelector(trigger),p=docu
 
 document.querySelectorAll("[data-platform]").forEach(b=>b.onclick=()=>setPlatform(b.dataset.platform));
 document.querySelector("#agregar-kpi").onclick=openKpiDialog;
-document.querySelector("#views-select").onchange=(e)=>abrirVista(e.target.value);
-document.querySelector("#view-save").onclick=()=>{
+bindPopover("#views-trigger","#views-popover");
+document.querySelector("#view-update").onclick=()=>{
   const actual=vistasDeAqui().find(v=>v.id===vistaAbierta);
-  document.querySelector("#view-name").value=actual?actual.nombre:nombreSugerido();
-  document.querySelector("#view-dialog-nota").textContent=actual
-    ? `Si dejás el mismo nombre se actualiza «${actual.nombre}». Cambialo para guardar una vista nueva.`
-    : "Se guarda la organización del panel y los filtros de esta pantalla.";
+  if(!actual) return;
+  document.querySelector("#views-popover").hidden=true;
+  guardarVista(actual.id, actual.nombre);
+};
+document.querySelector("#view-save").onclick=()=>{
+  document.querySelector("#view-name").value=nombreSugerido();
+  document.querySelector("#view-dialog-nota").textContent="Se guarda la organización del panel y los filtros de esta pantalla.";
+  document.querySelector("#views-popover").hidden=true;
   document.querySelector("#view-dialog").showModal();
 };
 document.querySelector("#view-cancel").onclick=()=>document.querySelector("#view-dialog").close();
 document.querySelector("#view-confirm").onclick=async()=>{
   const nombre=document.querySelector("#view-name").value.trim();
   if(!nombre) return;
-  const actual=vistasDeAqui().find(v=>v.id===vistaAbierta);
-  /* Mismo nombre sobre una vista abierta es actualizar; nombre distinto crea
-     otra, que es lo que se espera al «guardar como». */
-  const id=actual && actual.nombre===nombre ? actual.id : null;
-  try{
-    const r=await pedirVistas({ method:"POST", headers:{"content-type":"application/json"},
-      body: JSON.stringify({ id, nombre, cliente: DATOS.cliente, plataforma: state.platform, estado: capturarVista() }) });
-    VISTAS_GUARDADAS={ vistas:r.vistas, ultima:r.ultima, leidas:true };
-    vistaAbierta=r.guardada;
-    pintarVistas();
-    avisarVista(`Vista «${nombre}» guardada.`);
-  }catch(e){ avisarVista(e.message); }
   document.querySelector("#view-dialog").close();
+  await guardarVista(null, nombre);
 };
 document.querySelector("#view-delete").onclick=()=>{
   const actual=vistasDeAqui().find(v=>v.id===vistaAbierta);

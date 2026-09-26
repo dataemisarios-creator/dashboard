@@ -73,9 +73,17 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .kpi-opcion input { width: 17px; height: 17px; accent-color: var(--purple); }
 .kpi-opcion.bloqueada { opacity: .45; cursor: default; }
 /* ── Vistas guardadas ────────────────────────────────────────────── */
-#views-wrap select { min-width: 150px; max-width: 220px; border: 0; padding: 0; color: var(--ink); background: transparent; font-size: 14px; font-weight: 600; }
-.views-actions { display: flex; gap: 12px; align-items: center; }
-.views-actions .link-action[hidden] { display: none; }
+.views-popover { min-width: 250px; }
+#views-summary { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.view-option { display: flex; gap: 9px; align-items: center; min-height: 40px; padding: 6px 8px; border-radius: 9px; cursor: pointer; }
+.view-option:hover { background: var(--canvas); }
+.view-option.activa { font-weight: 600; }
+.view-option input { width: 16px; height: 16px; accent-color: var(--purple); }
+/* Guardar, actualizar y eliminar viven dentro del menú: en la fila de filtros
+   empujaban el botón de aplicar a un segundo renglón. */
+.views-actions { display: grid; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.views-actions [hidden] { display: none; }
+.views-actions .link-action { justify-self: center; }
 .link-action.peligro { color: var(--danger); }
 /* El botón de actualizar acompaña al indicador de conexión sin competir con él. */
 .refrescar { display: inline-flex; gap: 6px; align-items: center; min-height: 32px; margin-left: 10px; padding: 0 11px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted-ink); font-size: 12px; }
