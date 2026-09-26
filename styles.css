@@ -231,7 +231,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .print-only { display: none; }
 @media print {
   @page { size: A4 landscape; margin: 12mm; }
-  .sidebar, .topbar, .heading-actions, .filters-apply, .kpi-add, .table-actions,
+  .sidebar, .topbar, .heading-actions, .filters-apply, .kpi-add, .kpi-remove, #agregar-kpi, .table-actions,
   .granularity, .skip-link, .toast, .sidebar-toggle { display: none !important; }
   .app-shell { display: block; }
   .dashboard { padding: 0; background: #fff; }
@@ -611,6 +611,18 @@ td.negative { color: var(--danger); }
 .series-control-row .series-values { font-size: 12px; }
 /* Una tarjeta sin serie diaria no se lleva al gráfico: no se comporta como botón. */
 .kpi-card.is-static { cursor: default; }
+/* ── Tarjetas de indicadores: se quitan y se reordenan arrastrando ───── */
+.kpi-card { cursor: grab; }
+.kpi-card.arrastrando { opacity: .4; cursor: grabbing; }
+/* La tarjeta sobre la que se va a soltar marca el lugar de destino. */
+.kpi-card.encima { border-color: var(--purple); box-shadow: inset 0 0 0 2px var(--purple); }
+.kpi-card .kpi-remove { opacity: 0; transition: opacity 140ms ease; }
+.kpi-card:hover .kpi-remove, .kpi-card:focus-within .kpi-remove { opacity: 1; }
+.kpi-remove:hover { color: var(--danger); }
+/* El botón de agregar va en el encabezado para que la grilla no tenga huecos. */
+.kpi-ayuda { display: inline-flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.kpi-ayuda .secondary-action { min-height: 34px; padding: 0 14px; white-space: nowrap; }
+.kpi-ayuda .secondary-action:disabled { opacity: .45; }
 /* En la tabla de rendimiento el punto va pegado al nombre, no al borde. */
 .row-toggle .estado-punto { margin-left: 4px; }
 

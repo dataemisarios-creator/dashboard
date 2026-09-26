@@ -52,7 +52,10 @@ const platforms = {
 const state = {
   platform: "meta", objective: "__todos", estadoCampanias: "todas", rapido: "thisMonth", start: "", end: "", comparison: "previous", granularity: "day",
   selectedCampaigns: new Set(["meta-1","meta-2","meta-3"]), selectedMetrics: ["conversions","cpa"], chartTypes: { conversions: "bar", cpa: "line" },
-  customKpis: { meta: [], google: [], tiktok: [], instagram: [], tiktokOrganic: [] },
+  /* Las tarjetas de indicadores: una lista ordenada por plataforma. El usuario
+     las quita, las agrega y las reordena arrastrando, así que el orden es suyo
+     y no una constante del código. */
+  kpis: {},
   networks: new Set(["instagram","facebook"]),
   tableMetrics: { meta: ["spend","conversions","cpa"], google: ["spend","clicks","conversions"], tiktok: ["spend","videoViews","cpv"], instagram: ["reach","interactions","shares"], tiktokOrganic: ["reach","interactions","shares"] },
   expandedMetrics: new Set(["spend","conversions","cpa"]), expandedRows: new Set(["row-0","row-0-adset"]), showValues: {}
@@ -103,6 +106,7 @@ const TITULO_ESTADO = { activa: "Activa", pausada: "En pausa", eliminada: "Elimi
 const punto = (estado) => (estado ? `<i class="estado-punto estado-${estado}" title="${TITULO_ESTADO[estado]}"></i>` : "");
 
 const OBJETIVOS_GOOGLE = { SEARCH:"Búsqueda", VIDEO:"Video", DISPLAY:"Display", PERFORMANCE_MAX:"Performance Max", SHOPPING:"Shopping", DEMAND_GEN:"Demand Gen" };
+const OBJETIVOS_TIKTOK = { VIDEO_VIEWS:"Video", TRAFFIC:"Tráfico", REACH:"Alcance", CONVERSIONS:"Conversiones", WEB_CONVERSIONS:"Conversiones web", LEAD_GENERATION:"Generación de leads", ENGAGEMENT:"Interacción", PRODUCT_SALES:"Ventas", SHOP_PURCHASES:"Compras en tienda", APP_PROMOTION:"Promoción de app", TOPVIEW_REACH:"TopView", RF_REACH:"Alcance y frecuencia" };
 
 const TODOS_LOS_OBJETIVOS = "__todos";
 
@@ -138,11 +142,18 @@ const DATOS = {
   consultadoEn: null,
 };
 
+/* Hay dos clases de filtro: los que obligan a volver a consultar a Windsor
+   (período y comparación) y los que se resuelven sobre lo que ya está cargado
+   (campañas y objetivo). Distinguirlos evita una consulta entera cada vez que
+   se tilda una campaña. */
+let necesitaConsulta=false;
+
 const num = (v) => (v === null || v === undefined || v === "" ? 0 : Number(v) || 0);
 
 function objetivoDeFila(plataforma, fila) {
   if (plataforma === "meta") return OBJETIVOS_META[fila.campaign_objective] || "Otros";
   if (plataforma === "google") return OBJETIVOS_GOOGLE[fila.advertising_channel_type] || "Otros";
+  if (plataforma === "tiktok") return OBJETIVOS_TIKTOK[fila.objective_type] || "Otros";
   return "Campañas";
 }
 
@@ -223,6 +234,12 @@ function totalesComparacion() {
 
 /** Rango del período de comparación, con la misma regla que el selector. */
 function rangoComparacion() {
+  /* El período personalizado sale de sus dos campos; los demás se calculan. */
+  if (state.comparison === "custom") {
+    const desde = document.querySelector("#compare-start").value;
+    const hasta = document.querySelector("#compare-end").value;
+    if (desde && hasta) return [desde, hasta];
+  }
   const inicio = new Date(`${state.start}T12:00:00`), fin = new Date(`${state.end}T12:00:00`);
   if (state.comparison === "month") {
     const a = new Date(inicio), b = new Date(fin);
@@ -247,6 +264,8 @@ async function pedir(plataforma, desde, hasta) {
 let ultimoPedido = 0;
 
 async function cargarDatos() {
+  // Consultar de nuevo salda cualquier cambio de período o de comparación.
+  necesitaConsulta = false;
   const pedido = ++ultimoPedido;
   const vigente = () => pedido === ultimoPedido;
   DATOS.cargando = true;
@@ -473,7 +492,15 @@ function tipoDe(cuentaId){ const c=(DATOS.cuentasCliente||[]).find(x=>x.id===cue
 function hayComparacion(){ return state.comparison !== "none" && !!DATOS.filasComparacion.length; }
 /* Variación real de cada indicador contra el período de comparación. */
 function deltaFor(metric){ const c=totalesComparacion(); if(!c) return null; const previo=c[metric]; if(!previo) return null; return (totalesActuales()[metric]/previo-1)*100; }
-function currentMetrics() { const p=currentPlatform(); const base=(p.defaults[state.objective]||p.metrics).slice(0,6); return [...base, ...state.customKpis[DATOS.tipo]]; }
+const MAX_KPIS = 9;
+/* La primera vez que se entra a una plataforma se arranca con los seis de
+   siempre; de ahí en adelante manda lo que haya dejado el usuario. */
+function listaKpis() {
+  const tipo=DATOS.tipo, p=currentPlatform();
+  if(!state.kpis[tipo]) state.kpis[tipo]=(p.defaults[state.objective]||p.metrics).slice(0,6);
+  return state.kpis[tipo];
+}
+function currentMetrics() { return listaKpis(); }
 /* El valor de un indicador sale de los totales reales del período. `filas`
    permite pedir los de una campaña concreta para la tabla. */
 function valueFor(metric, filas, alcance = null) {
@@ -515,7 +542,14 @@ function aplicarRapido(clave){
   applyPeriod();
 }
 
-function applyPeriod(){state.start=document.querySelector("#date-start").value;state.end=document.querySelector("#date-end").value;syncPeriodControls();syncComparisonDates(document.querySelector('input[name="comparison"]:checked').value);document.querySelector("#period-popover").hidden=true;marcarFiltrosPendientes()}
+function applyPeriod(cerrar=true){
+  state.start=document.querySelector("#date-start").value;
+  state.end=document.querySelector("#date-end").value;
+  syncPeriodControls();
+  syncComparisonDates(document.querySelector('input[name="comparison"]:checked').value);
+  if(cerrar) document.querySelector("#period-popover").hidden=true;
+  marcarFiltrosPendientes(true);
+}
 
 function setPlatform(id) {
   state.platform=id;
@@ -523,7 +557,7 @@ function setPlatform(id) {
   const p=currentPlatform();
   state.objective="";
   state.selectedCampaigns=new Set();
-  state.selectedMetrics=(p.defaults[Object.keys(p.defaults)[0]]||p.metrics).filter(m=>!SIN_SERIE.has(m)).slice(0,2);
+  state.selectedMetrics=listaKpis().filter(m=>!SIN_SERIE.has(m)).slice(0,2);
   state.chartTypes[state.selectedMetrics[0]]="bar"; state.chartTypes[state.selectedMetrics[1]]="line";
   state.expandedMetrics=new Set(state.tableMetrics[DATOS.tipo]||[]);
   cargarDatos();
@@ -571,10 +605,12 @@ function renderCampaigns() {
   document.querySelector("#campaign-options").innerHTML=visibles.length
     ? visibles.map(c=>`<label class="campaign-option"><input type="checkbox" value="${c[0]}" ${state.selectedCampaigns.has(c[0])?"checked":""}><span>${punto(c[3])}${c[1]}<small>${c[2]}</small></span></label>`).join("")
     : '<p class="campaign-empty">No hay campañas con ese estado en este período.</p>';
+  /* Tildar una campaña no repinta el panel: con muchas campañas eso era un
+     recálculo entero por cada clic. Queda pendiente hasta APLICAR FILTROS. */
   document.querySelectorAll("#campaign-options input").forEach(i=>i.onchange=()=>{
     i.checked?state.selectedCampaigns.add(i.value):state.selectedCampaigns.delete(i.value);
     if(!state.selectedCampaigns.size){state.selectedCampaigns.add(i.value);i.checked=true}
-    renderCampaigns(); renderObjectives(); renderKpis(); renderChart(); renderTable(); renderAdditionalModules();
+    renderCampaigns(); marcarFiltrosPendientes();
   });
 
   const elegidas=[...campaniasEnJuego()];
@@ -583,26 +619,73 @@ function renderCampaigns() {
 }
 function renderKpis() {
   const metrics=currentMetrics(); const grid=document.querySelector("#kpi-grid");
-  let html=metrics.map(metric=>{
+  grid.innerHTML=metrics.map(metric=>{
     const idx=state.selectedMetrics.indexOf(metric);
     const delta=deltaFor(metric);
     const signo=delta===null?"":delta>=0?"↑":"↓";
     const clase=claseDeCambio(metric,delta);
-    const removable=state.customKpis[DATOS.tipo].includes(metric);
     const estatico=SIN_SERIE.has(metric);
-    return `<button class="kpi-card ${idx>=0?"selected":""} ${estatico?"is-static":""}" ${estatico?`title="Este indicador no tiene serie diaria"`:""} data-metric="${metric}" data-order="${idx>=0?idx+1:""}" style="--series-color:${COLORS[Math.max(0,idx)]}"><span class="kpi-label">${iconoDeMetrica(metric)}${metricLabel(metric)}</span><div class="kpi-value">${fmt(metric,valueFor(metric))}</div>${delta===null?"":`<span class="kpi-delta ${clase}">${signo} ${Math.abs(delta).toFixed(1).replace(".",",")}% vs. comparación</span>`}${removable?`<span class="kpi-remove" data-remove="${metric}">Quitar</span>`:""}</button>`;
+    return `<button class="kpi-card ${idx>=0?"selected":""} ${estatico?"is-static":""}" draggable="true" ${estatico?`title="Este indicador no tiene serie diaria"`:""} data-metric="${metric}" data-order="${idx>=0?idx+1:""}" style="--series-color:${COLORS[Math.max(0,idx)]}"><span class="kpi-label">${iconoDeMetrica(metric)}${metricLabel(metric)}</span><div class="kpi-value">${fmt(metric,valueFor(metric))}</div>${delta===null?"":`<span class="kpi-delta ${clase}">${signo} ${Math.abs(delta).toFixed(1).replace(".",",")}% vs. comparación</span>`}${metrics.length>1?`<span class="kpi-remove" data-remove="${metric}" title="Quitar esta tarjeta">Quitar</span>`:""}</button>`;
   }).join("");
-  const empty=3-state.customKpis[DATOS.tipo].length; for(let i=0;i<empty;i++) html+=`<button class="kpi-add" type="button">+<span>Agregar KPI</span></button>`; grid.innerHTML=html;
-  grid.querySelectorAll(".kpi-card").forEach(card=>card.onclick=e=>{ if(e.target.dataset.remove){removeCustom(e.target.dataset.remove);return} toggleChartMetric(card.dataset.metric); });
-  grid.querySelectorAll(".kpi-add").forEach(b=>b.onclick=openKpiDialog);
+
+  /* El botón de agregar vive en el encabezado, no en la grilla: una casilla
+     vacía por cada hueco ensucia el panel cuando se usa como informe. */
+  const agregar=document.querySelector("#agregar-kpi");
+  if(agregar){
+    const quedan=currentPlatform().metrics.filter(m=>!metrics.includes(m)).length;
+    agregar.disabled=metrics.length>=MAX_KPIS || !quedan;
+    agregar.title=metrics.length>=MAX_KPIS ? `El máximo es de ${MAX_KPIS} tarjetas` : (quedan?"":"Ya se muestran todos los indicadores disponibles");
+  }
+
+  grid.querySelectorAll(".kpi-card").forEach(card=>card.onclick=e=>{
+    if(e.target.dataset.remove){quitarKpi(e.target.dataset.remove);return}
+    // Soltar una tarjeta después de arrastrarla no cuenta como un clic.
+    if(Date.now()-finArrastre<300)return;
+    toggleChartMetric(card.dataset.metric);
+  });
+  conectarArrastre(grid);
+}
+
+/* ── Reordenar las tarjetas arrastrando ──────────────────────────────────
+   Mover una tarjeta de lugar es más directo que quitarla y volver a
+   agregarla, que era la única forma de cambiar el orden. */
+let arrastrada=null, finArrastre=0;
+function conectarArrastre(grid){
+  grid.querySelectorAll(".kpi-card").forEach(card=>{
+    card.ondragstart=e=>{ arrastrada=card.dataset.metric; card.classList.add("arrastrando"); e.dataTransfer.effectAllowed="move"; e.dataTransfer.setData("text/plain",arrastrada); };
+    card.ondragend=()=>{ finArrastre=Date.now(); arrastrada=null; grid.querySelectorAll(".kpi-card").forEach(c=>c.classList.remove("arrastrando","encima")); };
+    card.ondragover=e=>{ if(!arrastrada||card.dataset.metric===arrastrada)return; e.preventDefault(); e.dataTransfer.dropEffect="move"; card.classList.add("encima"); };
+    card.ondragleave=()=>card.classList.remove("encima");
+    card.ondrop=e=>{ e.preventDefault(); card.classList.remove("encima"); if(arrastrada) moverKpi(arrastrada,card.dataset.metric); };
+  });
+}
+function moverKpi(origen,destino){
+  const lista=listaKpis();
+  const i=lista.indexOf(origen), j=lista.indexOf(destino);
+  if(i<0||j<0||i===j)return;
+  lista.splice(j,0,...lista.splice(i,1));
+  renderKpis();
+}
+
+/* Siempre queda una tarjeta: una grilla vacía no dice nada y deja al gráfico
+   sin ningún indicador que dibujar. */
+function quitarKpi(metric){
+  const lista=listaKpis();
+  if(lista.length<=1)return;
+  state.kpis[DATOS.tipo]=lista.filter(m=>m!==metric);
+  state.selectedMetrics=state.selectedMetrics.filter(m=>m!==metric);
+  if(!state.selectedMetrics.length){
+    const otro=state.kpis[DATOS.tipo].find(m=>!SIN_SERIE.has(m));
+    if(otro) state.selectedMetrics=[otro];
+  }
+  renderKpis();renderChart();
 }
 
 function openKpiDialog() {
   const p=currentPlatform(); const shown=currentMetrics(); const choices=p.metrics.filter(m=>!shown.includes(m));
   document.querySelector("#kpi-dialog-options").innerHTML=choices.length?choices.map(m=>`<button type="button" class="kpi-choice" data-add-kpi="${m}">${metricLabel(m)}<span>+</span></button>`).join(""):`<p>Ya se muestran todos los KPI disponibles.</p>`;
-  document.querySelectorAll("[data-add-kpi]").forEach(b=>b.onclick=()=>{ if(state.customKpis[DATOS.tipo].length<3)state.customKpis[DATOS.tipo].push(b.dataset.addKpi); document.querySelector("#kpi-dialog").close(); renderKpis(); }); document.querySelector("#kpi-dialog").showModal();
+  document.querySelectorAll("[data-add-kpi]").forEach(b=>b.onclick=()=>{ if(listaKpis().length<MAX_KPIS) listaKpis().push(b.dataset.addKpi); document.querySelector("#kpi-dialog").close(); renderKpis(); }); document.querySelector("#kpi-dialog").showModal();
 }
-function removeCustom(metric){ state.customKpis[DATOS.tipo]=state.customKpis[DATOS.tipo].filter(m=>m!==metric); state.selectedMetrics=state.selectedMetrics.filter(m=>m!==metric); if(!state.selectedMetrics.length)state.selectedMetrics=[currentPlatform().defaults[state.objective].find(m=>!SIN_SERIE.has(m))]; renderKpis();renderChart(); }
 function toggleChartMetric(metric){ if(SIN_SERIE.has(metric))return; const i=state.selectedMetrics.indexOf(metric); if(i>=0&&state.selectedMetrics.length>1)state.selectedMetrics.splice(i,1); else if(i<0){if(state.selectedMetrics.length===2)state.selectedMetrics.shift();state.selectedMetrics.push(metric);if(!state.chartTypes[metric])state.chartTypes[metric]="line"} renderKpis();renderChart(); }
 
 /* La serie sale de las filas por fecha. Con granularidad semanal o mensual se
@@ -625,7 +708,13 @@ function etiquetaDeCubo(clave){
   return new Intl.DateTimeFormat("es-AR",{day:"2-digit",month:"short"}).format(new Date(`${clave}T12:00:00`));
 }
 function renderChart(){
-  const metrics=state.selectedMetrics; document.querySelector("#chart-title").textContent=`Evolución de ${metrics.map(metricLabel).join(" vs. ")}`;
+  const metrics=state.selectedMetrics;
+  if(!metrics.length){
+    document.querySelector("#chart-title").textContent="Evolución diaria";
+    document.querySelector("#series-controls").innerHTML='<p class="form-note">Ninguno de los indicadores que quedan tiene serie diaria.</p>';
+    document.querySelector("#evolution-chart").innerHTML="";
+    return;
+  } document.querySelector("#chart-title").textContent=`Evolución de ${metrics.map(metricLabel).join(" vs. ")}`;
   document.querySelector("#series-controls").innerHTML=metrics.map((m,i)=>`<label class="series-control" style="--series-color:${COLORS[i]}"><i></i><strong>${metricLabel(m)}</strong><select data-chart-type="${m}"><option value="line" ${state.chartTypes[m]==="line"?"selected":""}>Línea</option><option value="bar" ${state.chartTypes[m]==="bar"?"selected":""}>Barras</option></select><span class="series-values"><input type="checkbox" data-show-values="${m}" ${state.showValues[m]?"checked":""}> Mostrar datos</span></label>`).join("");
   document.querySelectorAll("[data-chart-type]").forEach(s=>s.onchange=()=>{state.chartTypes[s.dataset.chartType]=s.value;renderChart()});
   document.querySelectorAll("[data-show-values]").forEach(i=>i.onchange=()=>{state.showValues[i.dataset.showValues]=i.checked;renderChart()});
@@ -1020,27 +1109,40 @@ function renderAdditionalModules(){
 }
 function renderReelsTable(){const reels=[["Reel lanzamiento","1 sep 2026","12.400","4,8%","18.200","310","1.540","48"],["Test drive","6 sep 2026","10.900","5,2%","15.600","280","1.320","39"],["Detalle interior","12 sep 2026","8.700","4,1%","11.900","190","980","27"]];const labels=["Contenido","Fecha","Alcance","Engagement","Visualizaciones","Guardados","Me gusta","Comentarios"];return `<section class="panel"><p class="eyebrow">CONTENIDO</p><h2>Reels publicados</h2><div class="table-scroll"><table class="module-table reels-table"><tbody><tr><th>Vista previa</th>${reels.map(()=>`<td><div class="placeholder-media">Sin imagen</div></td>`).join("")}</tr>${labels.map((l,i)=>`<tr><th>${l}</th>${reels.map(r=>`<td>${r[i]}</td>`).join("")}</tr>`).join("")}</tbody></table></div></section>`}
 
-function marcarFiltrosPendientes(){ if (window.PanelEmisarios) window.PanelEmisarios.filtrosPendientes(); }
+function marcarFiltrosPendientes(consulta=false){ if(consulta) necesitaConsulta=true; if (window.PanelEmisarios) window.PanelEmisarios.filtrosPendientes(); }
 function renderAll(){syncPeriodControls();renderPlatformHeader();renderObjectives();renderCampaigns();renderKpis();renderChart();renderColumnOptions();renderTable();renderAdditionalModules();}
 function bindPopover(trigger,pop){const t=document.querySelector(trigger),p=document.querySelector(pop);t.onclick=e=>{e.stopPropagation();document.querySelectorAll(".popover").forEach(x=>x.hidden=true);p.hidden=!p.hidden};p.onclick=e=>e.stopPropagation()}
 
 document.querySelectorAll("[data-platform]").forEach(b=>b.onclick=()=>setPlatform(b.dataset.platform));
+document.querySelector("#agregar-kpi").onclick=openKpiDialog;
 bindPopover("#period-trigger","#period-popover");bindPopover("#campaign-trigger","#campaign-popover");bindPopover("#comparison-trigger","#comparison-popover");bindPopover("#columns-trigger","#columns-popover");document.addEventListener("click",()=>document.querySelectorAll(".popover").forEach(x=>x.hidden=true));
-document.querySelector("#campaign-select-all").onclick=()=>{state.selectedCampaigns=new Set(DATOS.campanias.map(c=>c[0]));renderCampaigns();renderObjectives();marcarFiltrosPendientes()};
-document.querySelector("#campaign-clear").onclick=()=>{state.selectedCampaigns.clear();renderCampaigns();renderObjectives();marcarFiltrosPendientes()};
-document.querySelectorAll('input[name="comparison"]').forEach(i=>{const sync=e=>{if(e.target.value!=="custom")syncComparisonDates(e.target.value)};i.onchange=sync;i.onclick=sync});
-document.querySelector("#apply-comparison").onclick=()=>{const input=document.querySelector('input[name="comparison"]:checked');state.comparison=input.value;document.querySelector("#comparison-summary").textContent=input.parentElement.textContent.trim();document.querySelector("#comparison-popover").hidden=true;marcarFiltrosPendientes()};
+document.querySelector("#campaign-select-all").onclick=()=>{state.selectedCampaigns=new Set(DATOS.campanias.map(c=>c[0]));renderCampaigns();marcarFiltrosPendientes()};
+document.querySelector("#campaign-clear").onclick=()=>{state.selectedCampaigns.clear();renderCampaigns();marcarFiltrosPendientes()};
+document.querySelectorAll('input[name="comparison"]').forEach(i=>{const sync=e=>{if(e.target.value!=="custom")syncComparisonDates(e.target.value);elegirComparacion()};i.onchange=sync;i.onclick=sync});
+function elegirComparacion(){
+  const input=document.querySelector('input[name="comparison"]:checked');
+  state.comparison=input.value;
+  document.querySelector("#comparison-summary").textContent=input.parentElement.textContent.trim();
+  marcarFiltrosPendientes(true);
+}
+/* Las fechas del período personalizado también cuentan como un cambio. */
+["#compare-start","#compare-end"].forEach(sel=>document.querySelector(sel).onchange=()=>{
+  const custom=document.querySelector('input[name="comparison"][value="custom"]');
+  custom.checked=true; elegirComparacion();
+});
 document.querySelectorAll("[data-granularity]").forEach(b=>b.onclick=()=>{state.granularity=b.dataset.granularity;document.querySelectorAll("[data-granularity]").forEach(x=>x.classList.toggle("active",x===b));renderChart()});
 document.querySelectorAll("[data-quick-period]").forEach(b=>b.onclick=()=>{ aplicarRapido(b.dataset.quickPeriod); });
 /* Marcar o desmarcar «Incluir hoy» vuelve a calcular el último período rápido
    elegido: es lo que se está preguntando, si el rango llega a hoy o cierra ayer. */
 document.querySelector("#include-today").onchange=()=>{ if(state.rapido) aplicarRapido(state.rapido); };
-document.querySelector("#apply-period").onclick=()=>{
+/* Elegir una fecha a mano deja de ser un período rápido. El menú no se cierra
+   porque casi siempre se tocan las dos fechas, una después de la otra. */
+["#date-start","#date-end"].forEach(sel=>document.querySelector(sel).onchange=()=>{
   state.rapido=null;
   document.querySelectorAll("[data-quick-period]").forEach(x=>x.classList.remove("active"));
   document.querySelector("#include-today-wrap").classList.add("hidden");
-  applyPeriod();
-};
+  applyPeriod(false);
+});
 /* El panel abre con el mes en curso hasta hoy. */
 aplicarRapido("thisMonth");
 window.onresize=()=>{clearTimeout(window.chartTimer);window.chartTimer=setTimeout(renderChart,100)};
@@ -1048,7 +1150,12 @@ window.DatosEmisarios = {
   cargar: cargarDatos,
   /* Volver a pedir sólo cuando cambió el período o la comparación; si sólo se
      tocaron campañas u objetivos alcanza con repintar lo que ya está. */
-  aplicarFiltros: () => cargarDatos(),
+  aplicarFiltros: () => {
+    if (necesitaConsulta) { necesitaConsulta = false; cargarDatos(); return; }
+    /* Campañas y objetivo se resuelven sobre las filas que ya están: repintar
+       es instantáneo y no hace falta molestar a Windsor. */
+    renderObjectives(); renderCampaigns(); renderKpis(); renderChart(); renderTable(); renderAdditionalModules();
+  },
   elegirCliente: (cliente, primera) => {
     DATOS.cliente = cliente.id;
     DATOS.nombreCliente = cliente.nombre;

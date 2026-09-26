@@ -44,7 +44,7 @@ const GOOGLE_EXTRAS = [
   { id: 'provincias', titulo: 'Provincias', columna: 'Provincia', campo: 'region', campos: `region,${GOOGLE_METRICAS}` },
 ];
 const TIKTOK_METRICAS = 'spend,impressions,clicks,reach,play_duration_6s,follows,profile_visits,shares';
-const TIKTOK = `date,campaign,campaign_status,${TIKTOK_METRICAS}`;
+const TIKTOK = `date,campaign,objective_type,campaign_status,${TIKTOK_METRICAS}`;
 /* TikTok no informa el nombre del conjunto (`adgroup_name` vuelve vacío), así
    que el desglose de esta cuenta llega hasta el anuncio. */
 const TIKTOK_DESGLOSE = `campaign,ad_name,ad_status,${TIKTOK_METRICAS}`;
