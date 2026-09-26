@@ -493,12 +493,41 @@ function hayComparacion(){ return state.comparison !== "none" && !!DATOS.filasCo
 /* Variación real de cada indicador contra el período de comparación. */
 function deltaFor(metric){ const c=totalesComparacion(); if(!c) return null; const previo=c[metric]; if(!previo) return null; return (totalesActuales()[metric]/previo-1)*100; }
 const MAX_KPIS = 9;
-/* La primera vez que se entra a una plataforma se arranca con los seis de
-   siempre; de ahí en adelante manda lo que haya dejado el usuario. */
+
+/* La disposición de las tarjetas es del usuario, así que sobrevive a recargar
+   la página. Se guarda en el navegador y con la clave de cada persona, para
+   que dos usuarios de la misma computadora no se pisen. No se guarda en el
+   servidor: es una preferencia de pantalla, no un dato del negocio.
+   Todo va entre try porque en una ventana privada el acceso puede fallar, y
+   el panel tiene que funcionar igual. */
+const CLAVE_KPIS = "emisarios.kpis";
+const claveDeKpis = () => `${CLAVE_KPIS}.${(window.PanelEmisarios && window.PanelEmisarios.usuario()) || "anon"}`;
+function kpisGuardados() {
+  try { return JSON.parse(localStorage.getItem(claveDeKpis())) || {}; } catch (e) { return {}; }
+}
+function guardarKpis() {
+  try { localStorage.setItem(claveDeKpis(), JSON.stringify(state.kpis)); } catch (e) { /* sin almacenamiento */ }
+}
+
+/* La primera vez que se entra a una plataforma se toma lo que dejó el usuario
+   y, si no dejó nada, los seis de siempre. Lo guardado se revisa contra los
+   indicadores que hoy existen: un indicador que se quitó del código no puede
+   volver desde una preferencia vieja. */
 function listaKpis() {
   const tipo=DATOS.tipo, p=currentPlatform();
-  if(!state.kpis[tipo]) state.kpis[tipo]=(p.defaults[state.objective]||p.metrics).slice(0,6);
+  if(!state.kpis[tipo]){
+    const guardada=(kpisGuardados()[tipo]||[]).filter(m=>p.metrics.includes(m));
+    state.kpis[tipo]=guardada.length?guardada.slice(0,MAX_KPIS):(p.defaults[state.objective]||p.metrics).slice(0,6);
+  }
   return state.kpis[tipo];
+}
+
+/* Volver a los seis de fábrica de esta plataforma. */
+function restablecerKpis(){
+  const p=currentPlatform();
+  state.kpis[DATOS.tipo]=(p.defaults[state.objective]||p.metrics).slice(0,6);
+  state.selectedMetrics=listaKpis().filter(m=>!SIN_SERIE.has(m)).slice(0,2);
+  guardarKpis(); renderKpis(); renderChart();
 }
 function currentMetrics() { return listaKpis(); }
 /* El valor de un indicador sale de los totales reales del período. `filas`
@@ -630,6 +659,12 @@ function renderKpis() {
 
   /* El botón de agregar vive en el encabezado, no en la grilla: una casilla
      vacía por cada hueco ensucia el panel cuando se usa como informe. */
+  const volver=document.querySelector("#restablecer-kpi");
+  if(volver){
+    const p=currentPlatform();
+    const fabrica=(p.defaults[state.objective]||p.metrics).slice(0,6);
+    volver.hidden=metrics.length===fabrica.length && metrics.every((m,i)=>m===fabrica[i]);
+  }
   const agregar=document.querySelector("#agregar-kpi");
   if(agregar){
     const quedan=currentPlatform().metrics.filter(m=>!metrics.includes(m)).length;
@@ -664,7 +699,7 @@ function moverKpi(origen,destino){
   const i=lista.indexOf(origen), j=lista.indexOf(destino);
   if(i<0||j<0||i===j)return;
   lista.splice(j,0,...lista.splice(i,1));
-  renderKpis();
+  guardarKpis(); renderKpis();
 }
 
 /* Siempre queda una tarjeta: una grilla vacía no dice nada y deja al gráfico
@@ -678,13 +713,13 @@ function quitarKpi(metric){
     const otro=state.kpis[DATOS.tipo].find(m=>!SIN_SERIE.has(m));
     if(otro) state.selectedMetrics=[otro];
   }
-  renderKpis();renderChart();
+  guardarKpis(); renderKpis(); renderChart();
 }
 
 function openKpiDialog() {
   const p=currentPlatform(); const shown=currentMetrics(); const choices=p.metrics.filter(m=>!shown.includes(m));
   document.querySelector("#kpi-dialog-options").innerHTML=choices.length?choices.map(m=>`<button type="button" class="kpi-choice" data-add-kpi="${m}">${metricLabel(m)}<span>+</span></button>`).join(""):`<p>Ya se muestran todos los KPI disponibles.</p>`;
-  document.querySelectorAll("[data-add-kpi]").forEach(b=>b.onclick=()=>{ if(listaKpis().length<MAX_KPIS) listaKpis().push(b.dataset.addKpi); document.querySelector("#kpi-dialog").close(); renderKpis(); }); document.querySelector("#kpi-dialog").showModal();
+  document.querySelectorAll("[data-add-kpi]").forEach(b=>b.onclick=()=>{ if(listaKpis().length<MAX_KPIS) listaKpis().push(b.dataset.addKpi); guardarKpis(); document.querySelector("#kpi-dialog").close(); renderKpis(); }); document.querySelector("#kpi-dialog").showModal();
 }
 function toggleChartMetric(metric){ if(SIN_SERIE.has(metric))return; const i=state.selectedMetrics.indexOf(metric); if(i>=0&&state.selectedMetrics.length>1)state.selectedMetrics.splice(i,1); else if(i<0){if(state.selectedMetrics.length===2)state.selectedMetrics.shift();state.selectedMetrics.push(metric);if(!state.chartTypes[metric])state.chartTypes[metric]="line"} renderKpis();renderChart(); }
 
@@ -1115,6 +1150,7 @@ function bindPopover(trigger,pop){const t=document.querySelector(trigger),p=docu
 
 document.querySelectorAll("[data-platform]").forEach(b=>b.onclick=()=>setPlatform(b.dataset.platform));
 document.querySelector("#agregar-kpi").onclick=openKpiDialog;
+document.querySelector("#restablecer-kpi").onclick=restablecerKpis;
 bindPopover("#period-trigger","#period-popover");bindPopover("#campaign-trigger","#campaign-popover");bindPopover("#comparison-trigger","#comparison-popover");bindPopover("#columns-trigger","#columns-popover");document.addEventListener("click",()=>document.querySelectorAll(".popover").forEach(x=>x.hidden=true));
 document.querySelector("#campaign-select-all").onclick=()=>{state.selectedCampaigns=new Set(DATOS.campanias.map(c=>c[0]));renderCampaigns();marcarFiltrosPendientes()};
 document.querySelector("#campaign-clear").onclick=()=>{state.selectedCampaigns.clear();renderCampaigns();marcarFiltrosPendientes()};

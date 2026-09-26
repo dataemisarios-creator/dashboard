@@ -141,6 +141,9 @@ botonFiltros.onclick = () => {
 filtrosAplicados();
 window.PanelEmisarios = {
   filtrosPendientes,
+  /* Quién está adentro: el panel lo usa para guardar la disposición de sus
+     tarjetas sin mezclarla con la de otra persona en la misma computadora. */
+  usuario: () => (sesion ? sesion.id : null),
   rutaDelPanel: () => { if (vistaActiva === "dashboard") pintarRuta(rutaDeVista("dashboard")); },
   conexion: (viva, detalle) => { conexionViva = viva; detalleConexion = detalle || ""; pintarConexion(); },
   recargarDatos: () => { if (window.DatosEmisarios) window.DatosEmisarios.cargar(); },

@@ -231,7 +231,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .print-only { display: none; }
 @media print {
   @page { size: A4 landscape; margin: 12mm; }
-  .sidebar, .topbar, .heading-actions, .filters-apply, .kpi-add, .kpi-remove, #agregar-kpi, .table-actions,
+  .sidebar, .topbar, .heading-actions, .filters-apply, .kpi-add, .kpi-remove, #agregar-kpi, #restablecer-kpi, .table-actions,
   .granularity, .skip-link, .toast, .sidebar-toggle { display: none !important; }
   .app-shell { display: block; }
   .dashboard { padding: 0; background: #fff; }
@@ -623,6 +623,8 @@ td.negative { color: var(--danger); }
 .kpi-ayuda { display: inline-flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .kpi-ayuda .secondary-action { min-height: 34px; padding: 0 14px; white-space: nowrap; }
 .kpi-ayuda .secondary-action:disabled { opacity: .45; }
+.link-action { border: 0; background: transparent; color: var(--purple); font-size: 12px; text-decoration: underline; }
+.link-action[hidden] { display: none; }
 /* En la tabla de rendimiento el punto va pegado al nombre, no al borde. */
 .row-toggle .estado-punto { margin-left: 4px; }
 
