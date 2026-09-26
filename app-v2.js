@@ -467,14 +467,29 @@ function pintarEstadoDatos() {
   caja.hidden = true;
 }
 
+/* Cuántos decimales hacen falta para que un valor que no es cero no se vea
+   como cero. Un CTR de 0,00064% redondeado a dos decimales es un cero que
+   miente, y en TikTok pasa de verdad: 8 clics sobre 1.240.013 impresiones. */
+function decimalesVisibles(valor, base, tope = 6) {
+  if (!valor) return base;
+  let d = base;
+  while (d < tope && Number(Math.abs(valor).toFixed(d)) === 0) d++;
+  return d;
+}
+
 function fmt(metric, value) {
   const type = metricDefs[metric]?.[1] || "number";
   // Lo que la fuente no informa se muestra vacío, nunca como un cero.
   if (value === null || value === undefined) return "—";
-  if (type === "currency") return new Intl.NumberFormat("es-AR", { style:"currency", currency: (typeof DATOS !== "undefined" && DATOS.moneda) || "USD", maximumFractionDigits:2 }).format(value);
-  if (type === "percent") return `${new Intl.NumberFormat("es-AR", { maximumFractionDigits:2 }).format(value)}%`;
-  if (type === "decimal") return new Intl.NumberFormat("es-AR", { maximumFractionDigits:2 }).format(value);
-  return new Intl.NumberFormat("es-AR", { maximumFractionDigits:0 }).format(value);
+  /* Las tasas y los importes llevan siempre dos decimales, para que una
+     columna de números se lea alineada; los enteros no llevan ninguno. */
+  const base = type === "number" ? 0 : 2;
+  const d = decimalesVisibles(value, base);
+  const opciones = { minimumFractionDigits: type === "number" ? 0 : base, maximumFractionDigits: d };
+  if (type === "currency")
+    return new Intl.NumberFormat("es-AR", { style:"currency", currency: (typeof DATOS !== "undefined" && DATOS.moneda) || "USD", ...opciones }).format(value);
+  if (type === "percent") return `${new Intl.NumberFormat("es-AR", opciones).format(value)}%`;
+  return new Intl.NumberFormat("es-AR", opciones).format(value);
 }
 /* Una plataforma puede renombrar un indicador cuando su dato no significa lo
    mismo que en el resto (el alcance de Instagram, por ejemplo). */
