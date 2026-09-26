@@ -903,14 +903,20 @@ function renderChart(){
   document.querySelectorAll("[data-chart-type]").forEach(s=>s.onchange=()=>{state.chartTypes[s.dataset.chartType]=s.value;renderChart()});
   document.querySelectorAll("[data-show-values]").forEach(i=>i.onchange=()=>{state.showValues[i.dataset.showValues]=i.checked;renderChart()});
   const cubos=serieAgrupada(); const labels=cubos.map(c=>etiquetaDeCubo(c[0])); const svg=document.querySelector("#evolution-chart"), width=Math.max(700,svg.clientWidth||900), height=280, margin={l:68,r:68,t:22,b:48}, iw=width-margin.l-margin.r, ih=height-margin.t-margin.b;
-  const values=metrics.map(m=>cubos.map(c=>valueFor(m,c[1]))); const max=values.map(v=>Math.max(...v,1)*1.12); const x=i=>margin.l+(labels.length===1?iw/2:i*iw/(labels.length-1)); const y=(v,s)=>margin.t+ih-v/max[s]*ih;
+  const values=metrics.map(m=>cubos.map(c=>valueFor(m,c[1]))); const max=values.map(v=>Math.max(...v,1)*1.12); /* Cada punto va en el centro de su banda y no repartido de borde a borde:
+     con pocos puntos las barras quedaban pisando los ejes. */
+  const paso=iw/labels.length; const x=i=>margin.l+paso*(i+.5); const y=(v,s)=>margin.t+ih-v/max[s]*ih;
   let html=`<rect class="chart-hit" x="${margin.l}" y="${margin.t}" width="${iw}" height="${ih}"/>`;for(let t=0;t<5;t++){const py=margin.t+ih-t*ih/4;html+=`<line class="chart-grid" x1="${margin.l}" y1="${py}" x2="${width-margin.r}" y2="${py}"/>`;metrics.forEach((m,s)=>{if(s===0||s===1&&metrics.length===2)html+=`<text class="chart-axis chart-y-axis" x="${s===0?margin.l-10:width-margin.r+10}" y="${py+4}" text-anchor="${s===0?"end":"start"}">${fmt(m,max[s]*t/4)}</text>`})}
   const step=Math.max(1,Math.ceil(labels.length/8));labels.forEach((l,i)=>{if(i%step===0||i===labels.length-1)html+=`<text class="chart-axis" x="${x(i)}" y="${height-17}" text-anchor="middle">${l}</text>`});
-  metrics.forEach((m,s)=>{if(state.chartTypes[m]==="bar"){const bw=Math.max(8,Math.min(30,iw/labels.length*.42));values[s].forEach((v,i)=>html+=`<rect class="chart-bar" x="${x(i)-bw/2+s*bw*.28}" y="${y(v,s)}" width="${bw}" height="${margin.t+ih-y(v,s)}" rx="3" fill="${COLORS[s]}"/>`)}else{html+=`<path class="chart-line" d="${values[s].map((v,i)=>`${i?"L":"M"}${x(i)},${y(v,s)}`).join(" ")}" stroke="${COLORS[s]}"/>`;values[s].forEach((v,i)=>html+=`<circle class="chart-point" cx="${x(i)}" cy="${y(v,s)}" r="4" fill="${COLORS[s]}"/>`)}});
+  const cuantasBarras=metrics.filter(m=>state.chartTypes[m]==="bar").length;
+  let puestaBarra=0;
+  metrics.forEach((m,s)=>{if(state.chartTypes[m]==="bar"){const bw=Math.max(8,Math.min(30,paso*.62/cuantasBarras));const desplazada=puestaBarra++;values[s].forEach((v,i)=>html+=`<rect class="chart-bar" x="${x(i)-bw*cuantasBarras/2+bw*desplazada}" y="${y(v,s)}" width="${bw}" height="${margin.t+ih-y(v,s)}" rx="3" fill="${COLORS[s]}"/>`)}else{html+=`<path class="chart-line" d="${values[s].map((v,i)=>`${i?"L":"M"}${x(i)},${y(v,s)}`).join(" ")}" stroke="${COLORS[s]}"/>`;values[s].forEach((v,i)=>html+=`<circle class="chart-point" cx="${x(i)}" cy="${y(v,s)}" r="4" fill="${COLORS[s]}"/>`)}});
   // Los valores se dibujan al final para que queden por encima de barras y líneas.
   // Se muestran aunque se pisen entre sí: es el usuario el que decide encenderlos.
-  metrics.forEach((m,s)=>{ if(!state.showValues[m])return; const esBarra=state.chartTypes[m]==="bar"; const bw=Math.max(8,Math.min(30,iw/labels.length*.42));
-    values[s].forEach((v,i)=>{ const px=esBarra?x(i)+s*bw*.28:x(i); const py=y(v,s)-(esBarra?6:10);
+  let puestaValor=0;
+  metrics.forEach((m,s)=>{ const esBarra=state.chartTypes[m]==="bar"; const bw=Math.max(8,Math.min(30,paso*.62/Math.max(1,cuantasBarras))); const desplazada=esBarra?puestaValor++:0;
+    if(!state.showValues[m])return;
+    values[s].forEach((v,i)=>{ const px=esBarra?x(i)-bw*cuantasBarras/2+bw*desplazada+bw/2:x(i); const py=y(v,s)-(esBarra?6:10);
       html+=`<text class="chart-value" x="${px}" y="${py}" text-anchor="middle" fill="${COLORS[s]}">${fmt(m,v)}</text>`; }); });
   svg.setAttribute("viewBox",`0 0 ${width} ${height}`);svg.innerHTML=html;
   const tooltip=document.querySelector("#chart-tooltip");
@@ -920,7 +926,7 @@ function renderChart(){
     // entre todos los puntos: sin multiplicar por los tramos, el redondeo sólo
     // devolvía el primero o el último.
     const avance=((e.clientX-rect.left)/rect.width*width-margin.l)/iw;
-    const idx=Math.max(0,Math.min(labels.length-1,Math.round(avance*(labels.length-1))));
+    const idx=Math.max(0,Math.min(labels.length-1,Math.floor(avance*labels.length)));
     tooltip.innerHTML=`<strong>${labels[idx]}</strong>${metrics.map((m,s)=>`<br><span style="color:${COLORS[s]}">●</span> ${metricLabel(m)}: ${fmt(m,values[s][idx])}`).join("")}`;
     tooltip.hidden=false;
     // La tarjeta se ancla al punto, no al cursor, y queda arriba del valor más
