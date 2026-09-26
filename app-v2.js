@@ -590,9 +590,11 @@ function listaKpis() {
      tiene: uno de otra plataforma no puede sobrevivir acá ni llegar a
      guardarse en una vista. */
   const guardada=state.kpis[tipo];
-  const limpia=Array.isArray(guardada)?guardada.filter(m=>p.metrics.includes(m)):null;
-  if(!limpia||!limpia.length) state.kpis[tipo]=(p.defaults[state.objective]||p.metrics).slice(0,6);
-  else if(limpia.length!==guardada.length) state.kpis[tipo]=limpia;
+  /* Sin lista todavía se arranca con los seis de siempre. Una lista vacía a
+     propósito se respeta: es el resultado de «Limpiar». */
+  if(!Array.isArray(guardada)){ state.kpis[tipo]=(p.defaults[state.objective]||p.metrics).slice(0,6); return state.kpis[tipo]; }
+  const limpia=guardada.filter(m=>p.metrics.includes(m));
+  if(limpia.length!==guardada.length) state.kpis[tipo]=limpia;
   return state.kpis[tipo];
 }
 
@@ -753,6 +755,12 @@ function renderCampaigns() {
 }
 function renderKpis() {
   const lista=currentMetrics(), metrics=kpisVisibles(); const grid=document.querySelector("#kpi-grid");
+  if(!metrics.length){
+    grid.innerHTML='<p class="kpi-vacia">No hay indicadores en pantalla. Agregá los que quieras ver desde «Agregar indicador».</p>';
+    const volverVacia=document.querySelector("#restablecer-kpi"); if(volverVacia) volverVacia.hidden=false;
+    const agregarVacia=document.querySelector("#agregar-kpi"); if(agregarVacia) agregarVacia.title=`0 de ${MAX_KPIS} indicadores elegidos`;
+    return;
+  }
   grid.innerHTML=metrics.map(metric=>{
     const idx=state.selectedMetrics.indexOf(metric);
     const delta=deltaFor(metric);
@@ -807,9 +815,7 @@ function moverKpi(origen,destino){
 /* Siempre queda una tarjeta: una grilla vacía no dice nada y deja al gráfico
    sin ningún indicador que dibujar. */
 function quitarKpi(metric, repintar=true){
-  const lista=listaKpis();
-  if(lista.length<=1)return;
-  state.kpis[DATOS.tipo]=lista.filter(m=>m!==metric);
+  state.kpis[DATOS.tipo]=listaKpis().filter(m=>m!==metric);
   state.selectedMetrics=state.selectedMetrics.filter(m=>m!==metric);
   if(!state.selectedMetrics.length){
     const otro=state.kpis[DATOS.tipo].find(m=>!SIN_SERIE.has(m));
@@ -868,7 +874,7 @@ function pintarOpcionesKpi() {
 function sincronizarOpcionesKpi() {
   const puestos=currentMetrics();
   // Al llegar al tope no se puede sumar otro, y nunca se quita el último.
-  const lleno=puestos.length>=MAX_KPIS, ultimo=puestos.length<=1;
+  const lleno=puestos.length>=MAX_KPIS;
   const filtro=!state.objective||state.objective===TODOS_LOS_OBJETIVOS?"":` · con el filtro «${state.objective}»`;
   document.querySelector("#kpi-dialog-cuenta").textContent=`${puestos.length} de ${MAX_KPIS} en pantalla${filtro}`;
   document.querySelectorAll("[data-kpi]").forEach(c=>{
@@ -876,7 +882,7 @@ function sincronizarOpcionesKpi() {
     c.checked=puesto;
     /* Un indicador sin datos con este filtro no se puede sumar: sería agregar
        una tarjeta en cero. Si ya estaba elegido sí se puede sacar. */
-    c.disabled=puesto?ultimo:(lleno||sinDatosAhora.has(c.dataset.kpi));
+    c.disabled=puesto?false:(lleno||sinDatosAhora.has(c.dataset.kpi));
     c.closest(".kpi-opcion").classList.toggle("bloqueada",c.disabled);
   });
 }
@@ -898,8 +904,8 @@ document.querySelector("#kpi-todos").onclick=()=>aplicarAtajoKpi(()=>{
   state.kpis[DATOS.tipo]=(elegibles.length?elegibles:p.metrics).slice(0,MAX_KPIS);
 });
 document.querySelector("#kpi-limpiar").onclick=()=>aplicarAtajoKpi(()=>{
-  state.kpis[DATOS.tipo]=listaKpis().slice(0,1);
-  state.selectedMetrics=state.selectedMetrics.filter(m=>state.kpis[DATOS.tipo].includes(m));
+  state.kpis[DATOS.tipo]=[];
+  state.selectedMetrics=[];
 });
 document.querySelector("#kpi-restablecer").onclick=()=>aplicarAtajoKpi(()=>{
   const p=currentPlatform();
@@ -940,7 +946,7 @@ function renderChart(){
   const metrics=state.selectedMetrics;
   if(!metrics.length){
     document.querySelector("#chart-title").textContent="Evolución diaria";
-    document.querySelector("#series-controls").innerHTML='<p class="form-note">Ninguno de los indicadores que quedan tiene serie diaria.</p>';
+    document.querySelector("#series-controls").innerHTML='<p class="form-note">Elegí un indicador con serie diaria para ver su evolución.</p>';
     document.querySelector("#evolution-chart").innerHTML="";
     return;
   } document.querySelector("#chart-title").textContent=`Evolución de ${metrics.map(metricLabel).join(" vs. ")}`;
