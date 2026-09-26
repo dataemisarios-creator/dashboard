@@ -76,6 +76,21 @@ export default async function handler(req, res) {
           .catch(() => [])
       : Promise.resolve([]);
 
+    /* Lo mismo abierto por campaña: es la única forma de que la tabla muestre
+       el alcance de cada campaña en vez de la suma de sus días. */
+    const pedirAlcanceCampania = cuenta.alcanceCampania
+      ? consultar('all', { date_from: desde, date_to: hasta, select_accounts: cuenta.cuenta, fields: cuenta.alcanceCampania })
+          .catch(() => [])
+      : Promise.resolve([]);
+
+    /* Y por conjunto de anuncios, para que la tabla tenga su alcance propio en
+       los tres niveles en lugar de una suma que contaría dos veces a quien vio
+       más de un anuncio. */
+    const pedirAlcanceConjunto = cuenta.alcanceConjunto
+      ? consultar('all', { date_from: desde, date_to: hasta, select_accounts: cuenta.cuenta, fields: cuenta.alcanceConjunto })
+          .catch(() => [])
+      : Promise.resolve([]);
+
     /* Desgloses que Google sólo entrega en informes separados: palabras clave,
        términos de búsqueda, ciudades y provincias. Van sin fecha, porque
        cruzarlos con el día multiplica las filas por miles. */
@@ -84,15 +99,35 @@ export default async function handler(req, res) {
         .then((filas) => ({ id: e.id, titulo: e.titulo, columna: e.columna, campo: e.campo, estado: e.estado || null, filas }))
         .catch(() => null));
 
-    const [filas, desglose, sueltas, fotos, seguidores, contenido, ...extras] =
-      await Promise.all([pedirFilas, pedirDesglose, pedirAlcance, pedirFoto, pedirSeguidores, pedirContenido, ...pedirExtras]);
+    const [filas, desglose, sueltas, porCampania, porConjunto, fotos, seguidores, contenido, ...extras] =
+      await Promise.all([pedirFilas, pedirDesglose, pedirAlcance, pedirAlcanceCampania, pedirAlcanceConjunto, pedirFoto, pedirSeguidores, pedirContenido, ...pedirExtras]);
     const alcance = sueltas.reduce((acc, f) => acc + (Number(f.reach) || 0), 0) || null;
+    const alcanceCampania = Object.fromEntries(porCampania
+      .filter((f) => f.campaign)
+      .map((f) => [f.campaign, Number(f.reach) || 0]));
+    const alcanceConjunto = Object.fromEntries(porConjunto
+      .filter((f) => f.campaign && f.adset_name)
+      .map((f) => [`${f.campaign}::${f.adset_name}`, Number(f.reach) || 0]));
+
+    /* Cada cuenta de Meta informa su resultado con un evento propio. Se copia a
+       un nombre fijo para que el panel no tenga que saber cuál es. */
+    if (cuenta.resultado)
+      for (const lista of [filas, desglose])
+        for (const fila of lista) fila.resultado = fila[cuenta.resultado] ?? null;
+
+    /* Instagram devuelve una fila por cada día del rango aunque todavía no
+       tenga datos: el día en curso llega entero en blanco. Esa fila no se
+       manda, porque en la serie diaria aparecería como un día en cero. */
+    const utiles = cuenta.tipo === 'instagram'
+      ? filas.filter((f) => ['reach', 'views', 'total_interactions', 'likes', 'follower_count']
+          .some((c) => f[c] !== null && f[c] !== undefined))
+      : filas;
 
     /* Las altas y bajas llegan en su propia consulta: se pegan al día que les
        corresponde para que el panel siga leyendo una fila por fecha. */
     if (seguidores.length) {
       const porFecha = new Map(seguidores.map((f) => [f.date, f]));
-      for (const fila of filas) {
+      for (const fila of utiles) {
         const s = porFecha.get(fila.date);
         if (!s) continue;
         fila.follower_count = s.follower_count;
@@ -102,17 +137,22 @@ export default async function handler(req, res) {
 
     res.setHeader('Cache-Control', 'private, max-age=0, no-store');
     return res.status(200).json({
-      cuenta: { id: cuenta.id, tipo: cuenta.tipo, titulo: cuenta.titulo, moneda: cuenta.moneda || null, grupo: cuenta.grupo },
+      cuenta: {
+        id: cuenta.id, tipo: cuenta.tipo, titulo: cuenta.titulo, moneda: cuenta.moneda || null, grupo: cuenta.grupo,
+        resultado: cuenta.resultadoEtiqueta || null, resultadoCosto: cuenta.resultadoCosto || null,
+      },
       desde,
       hasta,
       alcance,
+      alcanceCampania,
+      alcanceConjunto,
       niveles: cuenta.niveles || [],
       nivelesEstado: cuenta.nivelesEstado || [],
       desglose,
       foto: fotos[0] || null,
       contenido,
       extras: extras.filter(Boolean),
-      filas,
+      filas: utiles,
       consultadoEn: new Date().toISOString(),
     });
   } catch (e) {

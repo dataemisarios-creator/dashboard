@@ -4,6 +4,7 @@ const metricDefs = {
   spend: ["Inversión", "currency"], impressions: ["Impresiones", "number"], cpm: ["CPM", "currency"], reach: ["Alcance", "number"], frequency: ["Frecuencia", "decimal"],
   conversions: ["Leads / conversiones", "number"], cpa: ["CPL / CPA", "currency"], instagramProfileVisits: ["Visitas al perfil de Instagram", "number"], instagramFollows: ["Seguimientos de Instagram", "number"],
   clicks: ["Clics", "number"], ctr: ["CTR", "percent"], cpc: ["CPC", "currency"], views: ["Visualizaciones", "number"], cpv: ["CPV", "currency"],
+  allConversions: ["Todas las conversiones", "number"], cpaTodas: ["Costo / todas las conv.", "currency"],
   videoViews: ["Reproducciones de video", "number"], paidFollowers: ["Seguidores pagos", "number"], tiktokProfileVisits: ["Visitas al perfil de TikTok", "number"], shares: ["Compartidos", "number"],
   followers: ["Seguidores totales", "number"], newFollowers: ["Nuevos seguidores", "number"], unfollows: ["Dejaron de seguir", "number"], balance: ["Balance de seguidores", "number"], reels: ["Reels publicados", "number"], feedPosts: ["Posteos en el feed", "number"], stories: ["Historias", "number"], interactions: ["Interacciones totales", "number"], saves: ["Guardados", "number"], likes: ["Me gusta", "number"], comments: ["Comentarios", "number"]
 };
@@ -20,7 +21,7 @@ const platforms = {
   },
   google: {
     title: "Google Ads", description: "Búsqueda, conversiones y visualizaciones de Google Ads.", paid: true,
-    metrics: ["clicks","impressions","ctr","cpc","spend","conversions","cpa","views","cpv","cpm"],
+    metrics: ["clicks","impressions","ctr","cpc","spend","conversions","cpa","allConversions","cpaTodas","views","cpv","cpm"],
     objectives: { search: "Búsqueda", conversions: "Conversiones", video: "Video" },
     defaults: { search: ["clicks","impressions","ctr","cpc","spend","conversions"], conversions: ["conversions","cpa","spend","clicks","ctr","impressions"], video: ["views","cpv","spend","impressions","cpm","clicks"] },
     campaigns: [["google-1","Search · Marca","search",1], ["google-2","Search · Modelos","conversions",.78], ["google-3","YouTube · Lanzamiento","video",.92]]
@@ -65,14 +66,16 @@ const state = {
 /* Qué campo de Windsor corresponde a cada indicador del panel. Lo que no está
    en este mapa no se muestra: nunca se rellena con datos de ejemplo. */
 const CAMPOS = {
-  meta: { spend:"spend", impressions:"impressions", clicks:"clicks", conversions:"actions_offsite_conversion_fb_pixel_custom", instagramProfileVisits:"instagram_profile_visits", instagramFollows:"instagram_profile_follow" },
-  google: { spend:"spend", impressions:"impressions", clicks:"clicks", conversions:"conversions", views:"video_trueview_views" },
+  meta: { spend:"spend", impressions:"impressions", clicks:"clicks", conversions:"resultado", instagramProfileVisits:"instagram_profile_visits", instagramFollows:"instagram_profile_follow" },
+  google: { spend:"spend", impressions:"impressions", clicks:"clicks", conversions:"conversions", allConversions:"all_conversions", views:"video_trueview_views" },
   tiktok: { spend:"spend", impressions:"impressions", clicks:"clicks", videoViews:"play_duration_6s", paidFollowers:"follows", tiktokProfileVisits:"profile_visits", shares:"shares" },
   instagram: { reach:"reach", views:"views", interactions:"total_interactions", likes:"likes", comments:"comments", shares:"shares", saves:"saves", newFollowers:"follower_count" },
   tiktokOrganic: {},
 };
 /* Estos no se suman: son una foto del momento de la consulta. */
 const FOTO = new Set(["followers", "feedPosts"]);
+/* Plataformas cuyo alcance único llega en su propia consulta y nunca se suma. */
+const ALCANCE_APARTE = new Set(["meta", "tiktok"]);
 /* Estos no tienen serie diaria: son una foto del día de la consulta o un
    recuento de todo el período, así que no se pueden dibujar por día. La
    tarjeta se muestra igual, pero no se puede llevar al gráfico. */
@@ -121,6 +124,12 @@ const DATOS = {
   nivelesEstado: [],
   alcance: null,
   alcanceComparacion: null,
+  alcanceCampania: {},
+  alcanceCampaniaComparacion: {},
+  alcanceConjunto: {},
+  alcanceConjuntoComparacion: {},
+  resultado: null,
+  resultadoCosto: null,
   moneda: null,
   campanias: [],
   objetivos: {},
@@ -150,14 +159,18 @@ function totalizar(plataforma, filas, alcance, extra = {}) {
       t[indicador] = filas.reduce((suma, f) => suma + num(f[campo]), 0);
     }
   }
-  if (alcance !== null && alcance !== undefined) t.reach = alcance;
+  /* En medios pagos el alcance único sale de una consulta aparte. Si para esta
+     fila no hay uno, no se inventa sumando los días: queda vacío. */
+  if (ALCANCE_APARTE.has(plataforma)) t.reach = alcance === null || alcance === undefined ? null : alcance;
+  else if (alcance !== null && alcance !== undefined) t.reach = alcance;
   const tasa = (a, b, factor = 1) => (b ? (a / b) * factor : 0);
   t.cpm = tasa(t.spend, t.impressions, 1000);
   t.ctr = tasa(t.clicks, t.impressions, 100);
   t.cpc = tasa(t.spend, t.clicks);
   t.cpa = tasa(t.spend, t.conversions);
   t.cpv = tasa(t.spend, t.views || t.videoViews);
-  t.frequency = tasa(t.impressions, t.reach);
+  t.cpaTodas = tasa(t.spend, t.allConversions);
+  t.frequency = t.reach === null ? null : tasa(t.impressions, t.reach);
 
   /* Seguidores totales y publicaciones son el valor de hoy: llegan en una
      consulta sin fecha y no se suman. */
@@ -264,12 +277,18 @@ async function cargarDatos() {
     DATOS.niveles = actual.niveles || [];
     DATOS.nivelesEstado = actual.nivelesEstado || [];
     DATOS.alcance = actual.alcance;
+    DATOS.alcanceCampania = actual.alcanceCampania || {};
+    DATOS.alcanceConjunto = actual.alcanceConjunto || {};
+    DATOS.resultado = actual.cuenta?.resultado || null;
+    DATOS.resultadoCosto = actual.cuenta?.resultadoCosto || null;
     DATOS.moneda = actual.cuenta?.moneda || null;
     DATOS.consultadoEn = actual.consultadoEn;
 
     DATOS.filasComparacion = previo ? previo.filas || [] : [];
     DATOS.desgloseComparacion = previo ? previo.desglose || [] : [];
     DATOS.alcanceComparacion = previo ? previo.alcance : null;
+    DATOS.alcanceCampaniaComparacion = previo ? previo.alcanceCampania || {} : {};
+    DATOS.alcanceConjuntoComparacion = previo ? previo.alcanceConjunto || {} : {};
     DATOS.fotoComparacion = previo ? previo.foto || null : null;
     DATOS.contenidoComparacion = previo ? previo.contenido || [] : [];
 
@@ -405,7 +424,13 @@ function fmt(metric, value) {
 }
 /* Una plataforma puede renombrar un indicador cuando su dato no significa lo
    mismo que en el resto (el alcance de Instagram, por ejemplo). */
-function metricLabel(metric) { return platforms[state.platform]?.etiquetas?.[metric] || metricDefs[metric]?.[0] || metric; }
+function metricLabel(metric) {
+  /* Cada cuenta de Meta nombra su resultado a su manera: compras, leads o
+     conversaciones. Lo dice el servidor, que es quien sabe qué evento pidió. */
+  if (metric === "conversions" && DATOS.resultado) return DATOS.resultado;
+  if (metric === "cpa" && DATOS.resultadoCosto) return DATOS.resultadoCosto;
+  return platforms[state.platform]?.etiquetas?.[metric] || metricDefs[metric]?.[0] || metric;
+}
 
 /* Iconos de las vistas orgánicas. En medios pagos no van: ahí lo que ordena la
    lectura es el número, y un icono por tarjeta sería ruido. */
@@ -451,8 +476,8 @@ function deltaFor(metric){ const c=totalesComparacion(); if(!c) return null; con
 function currentMetrics() { const p=currentPlatform(); const base=(p.defaults[state.objective]||p.metrics).slice(0,6); return [...base, ...state.customKpis[DATOS.tipo]]; }
 /* El valor de un indicador sale de los totales reales del período. `filas`
    permite pedir los de una campaña concreta para la tabla. */
-function valueFor(metric, filas) {
-  const totales = filas ? totalizar(DATOS.tipo, filas, null) : totalesActuales();
+function valueFor(metric, filas, alcance = null) {
+  const totales = filas ? totalizar(DATOS.tipo, filas, alcance) : totalesActuales();
   return totales[metric] === undefined ? 0 : totales[metric];
 }
 function toISO(date){return date.toISOString().slice(0,10)}
@@ -683,6 +708,8 @@ function renderTable(){
     filasTabla.push({ clave, etiqueta:c[1], estado:c[3], nivel:"campaign", sangria:0,
       actuales:DATOS.filas.filter(f=>f.campaign===nombre),
       previas:DATOS.filasComparacion.filter(f=>f.campaign===nombre),
+      alcance:DATOS.alcanceCampania[nombre] ?? null,
+      alcancePrevio:DATOS.alcanceCampaniaComparacion[nombre] ?? null,
       desplegable:niveles.length>0 });
     if(!niveles.length || !state.expandedRows.has(clave)) continue;
 
@@ -692,6 +719,8 @@ function renderTable(){
       const ramaActual=ramaDe(DATOS.desglose,nombre,niveles,[valor]);
       filasTabla.push({ clave:claveNivel, etiqueta:nombreDeNivel(niveles[0],valor), nivel:CLASE_NIVEL(niveles[0]), sangria:1,
         estado: DATOS.nivelesEstado[0] && ramaActual[0] ? estadoDeFila(ramaActual[0], DATOS.nivelesEstado[0]) : null,
+        alcance:DATOS.alcanceConjunto[`${nombre}::${valor}`] ?? null,
+        alcancePrevio:DATOS.alcanceConjuntoComparacion[`${nombre}::${valor}`] ?? null,
         actuales:ramaActual,
         previas:ramaDe(DATOS.desgloseComparacion,nombre,niveles,[valor]),
         desplegable:niveles.length>1 });
@@ -700,10 +729,15 @@ function renderTable(){
       const segundos=[...new Set(ramaDe(DATOS.desglose,nombre,niveles,[valor]).map(f=>String(f[niveles[1]]??"")))];
       for(const hoja of segundos){
         const ramaHoja=ramaDe(DATOS.desglose,nombre,niveles,[valor,hoja]);
+        const previaHoja=ramaDe(DATOS.desgloseComparacion,nombre,niveles,[valor,hoja]);
         filasTabla.push({ clave:`${claveNivel}::${hoja}`, etiqueta:nombreDeNivel(niveles[1],hoja), nivel:"ad", sangria:2,
           estado: DATOS.nivelesEstado[1] && ramaHoja[0] ? estadoDeFila(ramaHoja[0], DATOS.nivelesEstado[1]) : null,
+          /* El desglose viene sin fecha, así que el alcance del anuncio ya es
+             el único del período: se puede usar tal cual. */
+          alcance: ramaHoja.length===1 ? num(ramaHoja[0].reach) || null : null,
+          alcancePrevio: previaHoja.length===1 ? num(previaHoja[0].reach) || null : null,
           actuales:ramaHoja,
-          previas:ramaDe(DATOS.desgloseComparacion,nombre,niveles,[valor,hoja]),
+          previas:previaHoja,
           desplegable:false });
       }
     }
@@ -716,10 +750,10 @@ function renderTable(){
       : `${punto(fila.estado)}${fila.etiqueta}`;
     let celdas=`<td style="padding-left:${12+fila.sangria*18}px">${nombre}</td>`;
     metrics.forEach(m=>{
-      const v=valueFor(m,fila.actuales);
+      const v=valueFor(m,fila.actuales,fila.alcance ?? null);
       celdas+=`<td class="ini-grupo">${fmt(m,v)}</td>`;
       if(hay&&state.expandedMetrics.has(m)){
-        const previo=valueFor(m,fila.previas);
+        const previo=valueFor(m,fila.previas,fila.alcancePrevio ?? null);
         const cambio=previo?(v/previo-1)*100:null;
         celdas+=`<td>${fmt(m,previo)}</td><td class="${claseDeCambio(m,cambio)}">${cambio===null?"—":`${cambio>=0?"+":"−"}${Math.abs(cambio).toFixed(1).replace(".",",")}%`}</td>`;
       }
