@@ -13,7 +13,13 @@
  * red: cada uno es una entrada con su propio `id` y su propio `titulo`.
  */
 
-const META_BASE = 'spend,impressions,reach,clicks,actions_link_click,instagram_profile_visits,instagram_profile_follow';
+const META_BASE = [
+  'spend', 'impressions', 'reach', 'clicks', 'unique_clicks',
+  'actions_link_click', 'actions_landing_page_view',
+  'actions_post_engagement', 'actions_video_view',
+  'actions_post_reaction', 'actions_comment', 'actions_post',
+  'instagram_profile_visits', 'instagram_profile_follow',
+].join(',');
 /* Cada cuenta de Meta cuenta su resultado con un evento distinto, y pedir el
    que no es devuelve cero. Se comprobó cuenta por cuenta contra Windsor: donde
    la cuenta vende, el resultado es la compra; donde conversa, la conversación
@@ -34,21 +40,24 @@ const META_ALCANCE_CONJUNTO = 'campaign,adset_name,reach,impressions';
 /* `conversions` son sólo las acciones marcadas como principales en Google Ads;
    `all_conversions` son todas. Hay cuentas sin ninguna marcada como principal,
    donde la primera da cero y la segunda no: se muestran las dos. */
-const GOOGLE_METRICAS = 'spend,clicks,impressions,conversions,all_conversions,video_trueview_views';
+const GOOGLE_METRICAS = 'spend,clicks,impressions,conversions,all_conversions,video_trueview_views,interactions,conversions_value,all_conversions_value,phone_calls';
+/* Los desgloses (palabras clave, términos, ubicaciones) muestran sólo seis
+   columnas: pedirles las demás sería arrastrar miles de filas de más. */
+const GOOGLE_METRICAS_DESGLOSE = 'spend,clicks,impressions,conversions,all_conversions,video_trueview_views';
 const GOOGLE = `date,campaign,advertising_channel_type,campaign_status,${GOOGLE_METRICAS}`;
 const GOOGLE_DESGLOSE = `campaign,ad_group_name,ad_group_status,ad_id,ad_group_ad_status,${GOOGLE_METRICAS}`;
 const GOOGLE_EXTRAS = [
   /* Una palabra clave habilitada dentro de un grupo pausado no se muestra, así
      que su estado real es el del grupo. Se piden los dos y el panel se queda
      con el peor de ambos, que es lo que se ve en Google Ads. */
-  { id: 'keywords', titulo: 'Palabras clave', columna: 'Palabra clave', campo: 'keyword_text', campos: `keyword_text,keyword_status,ad_group_status,${GOOGLE_METRICAS}`, estado: 'keyword_status', estadoPadre: 'ad_group_status' },
-  { id: 'terminos', titulo: 'Términos de búsqueda', columna: 'Término', campo: 'search_term', campos: `search_term,${GOOGLE_METRICAS}` },
+  { id: 'keywords', titulo: 'Palabras clave', columna: 'Palabra clave', campo: 'keyword_text', campos: `keyword_text,keyword_status,ad_group_status,${GOOGLE_METRICAS_DESGLOSE}`, estado: 'keyword_status', estadoPadre: 'ad_group_status' },
+  { id: 'terminos', titulo: 'Términos de búsqueda', columna: 'Término', campo: 'search_term', campos: `search_term,${GOOGLE_METRICAS_DESGLOSE}` },
   /* `city` y `region` de Google no son una ciudad y su provincia: se pisan
      entre sí. Monserrat llega como «Buenos Aires / Comuna 1» y Palermo como
      «Comuna 14 / Buenos Aires», y en el lugar de la provincia aparecen
      departamentos («Capital Department»). La cadena de ubicación sí es fiable
      —«lugar,contenedor,…,país»— y de ella salen las dos tablas. */
-  { id: 'geo', titulo: 'Ubicación', columna: 'Ubicación', campo: 'geo_target_most_specific_location', campos: `geo_target_most_specific_location,${GOOGLE_METRICAS}` },
+  { id: 'geo', titulo: 'Ubicación', columna: 'Ubicación', campo: 'geo_target_most_specific_location', campos: `geo_target_most_specific_location,${GOOGLE_METRICAS_DESGLOSE}` },
 ];
 /* Sólo campos sumables: las tasas (CTR, CPC, CPM, frecuencia, VTR) se calculan
    sobre los totales del período, nunca promediando las diarias. `reach` se pide

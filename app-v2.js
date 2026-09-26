@@ -5,6 +5,14 @@ const metricDefs = {
   conversions: ["Leads / conversiones", "number"], cpa: ["CPL / CPA", "currency"], instagramProfileVisits: ["Visitas al perfil de Instagram", "number"], instagramFollows: ["Seguimientos de Instagram", "number"],
   clicks: ["Clics", "number"], ctr: ["CTR", "percent"], cpc: ["CPC", "currency"], views: ["Visualizaciones", "number"], cpv: ["CPV", "currency"],
   allConversions: ["Todas las conversiones", "number"], cpaTodas: ["Costo / todas las conv.", "currency"],
+  /* Meta: el clic en el enlace es el que importa cuando hay un sitio detrás;
+     el clic a secas incluye reacciones y despliegues del anuncio. */
+  linkClicks: ["Clics en el enlace", "number"], ctrLink: ["CTR del enlace", "percent"], cpcLink: ["CPC del enlace", "currency"],
+  uniqueClicks: ["Clics únicos", "number"], landingViews: ["Vistas de la página de destino", "number"],
+  postEngagement: ["Interacciones con la publicación", "number"], reactions: ["Reacciones", "number"],
+  /* Google */
+  gInteractions: ["Interacciones", "number"], revenueG: ["Valor de conversiones", "currency"],
+  revenueTodas: ["Valor de todas las conv.", "currency"], phoneCalls: ["Llamadas", "number"],
   /* TikTok: retención de video, interacción y embudo. Las tasas se calculan
      sobre impresiones, que es el denominador con el que se leen en la
      plataforma. */
@@ -22,7 +30,10 @@ const metricDefs = {
 const platforms = {
   meta: {
     title: "Meta Ads", description: "Rendimiento de campañas de Facebook e Instagram.", paid: true,
-    metrics: ["spend","impressions","cpm","reach","frequency","conversions","cpa","instagramProfileVisits","instagramFollows"],
+    metrics: ["spend","impressions","cpm","reach","frequency","conversions","cpa",
+      "clicks","ctr","cpc","linkClicks","ctrLink","cpcLink","uniqueClicks","landingViews",
+      "postEngagement","reactions","comments","shares","videoViews","cpv",
+      "instagramProfileVisits","instagramFollows"],
     objectives: { leads: "Leads", profile: "Tráfico al perfil" },
     defaults: { leads: ["spend","impressions","conversions","cpa","reach","frequency"], profile: ["spend","impressions","instagramProfileVisits","instagramFollows","cpm","frequency"] },
     campaigns: [
@@ -31,7 +42,8 @@ const platforms = {
   },
   google: {
     title: "Google Ads", description: "Búsqueda, conversiones y visualizaciones de Google Ads.", paid: true,
-    metrics: ["clicks","impressions","ctr","cpc","spend","conversions","cpa","allConversions","cpaTodas","views","cpv","cpm"],
+    metrics: ["clicks","impressions","ctr","cpc","spend","conversions","cpa","allConversions","cpaTodas","views","cpv","cpm",
+      "gInteractions","revenueG","revenueTodas","roas","phoneCalls"],
     objectives: { search: "Búsqueda", conversions: "Conversiones", video: "Video" },
     defaults: { search: ["clicks","impressions","ctr","cpc","spend","conversions"], conversions: ["conversions","cpa","spend","clicks","ctr","impressions"], video: ["views","cpv","spend","impressions","cpm","clicks"] },
     campaigns: [["google-1","Search · Marca","search",1], ["google-2","Search · Modelos","conversions",.78], ["google-3","YouTube · Lanzamiento","video",.92]]
@@ -82,8 +94,13 @@ const state = {
 /* Qué campo de Windsor corresponde a cada indicador del panel. Lo que no está
    en este mapa no se muestra: nunca se rellena con datos de ejemplo. */
 const CAMPOS = {
-  meta: { spend:"spend", impressions:"impressions", clicks:"clicks", conversions:"resultado", instagramProfileVisits:"instagram_profile_visits", instagramFollows:"instagram_profile_follow" },
-  google: { spend:"spend", impressions:"impressions", clicks:"clicks", conversions:"conversions", allConversions:"all_conversions", views:"video_trueview_views" },
+  meta: { spend:"spend", impressions:"impressions", clicks:"clicks", conversions:"resultado",
+    linkClicks:"actions_link_click", uniqueClicks:"unique_clicks", landingViews:"actions_landing_page_view",
+    postEngagement:"actions_post_engagement", videoViews:"actions_video_view",
+    reactions:"actions_post_reaction", comments:"actions_comment", shares:"actions_post",
+    instagramProfileVisits:"instagram_profile_visits", instagramFollows:"instagram_profile_follow" },
+  google: { spend:"spend", impressions:"impressions", clicks:"clicks", conversions:"conversions", allConversions:"all_conversions", views:"video_trueview_views",
+    gInteractions:"interactions", revenueG:"conversions_value", revenueTodas:"all_conversions_value", phoneCalls:"phone_calls" },
   tiktok: { spend:"spend", impressions:"impressions", clicks:"clicks",
     videoViews:"total_play", views2s:"play_duration_2s", views6s:"play_duration_6s",
     views25:"play_first_quartile", views50:"play_midpoint", views75:"play_third_quartile", views100:"play_over",
@@ -215,7 +232,9 @@ function totalizar(plataforma, filas, alcance, extra = {}) {
   /* Retención de video: qué parte de lo que se mostró llegó a cada punto. */
   t.hookRate = tasa(t.views2s, t.impressions, 100);
   t.vtr = tasa(t.views100, t.impressions, 100);
-  t.roas = tasa(t.revenue, t.spend);
+  t.roas = tasa(t.revenue !== undefined ? t.revenue : t.revenueG, t.spend);
+  t.ctrLink = tasa(t.linkClicks, t.impressions, 100);
+  t.cpcLink = tasa(t.spend, t.linkClicks);
   /* Donde el conector no informa una interacción total propia, se suma. En
      Instagram sí la informa y es más amplia, así que ahí no se toca. */
   if (!mapa.interactions && (t.likes !== undefined || t.comments !== undefined || t.shares !== undefined))
@@ -862,6 +881,31 @@ function sincronizarOpcionesKpi() {
   });
 }
 function openKpiDialog() { verSinDatos=false; pintarOpcionesKpi(); document.querySelector("#kpi-dialog").showModal(); }
+
+/* Atajos del selector. «Seleccionar todo» respeta el tope: con más
+   indicadores que lugares toma los primeros, que son los principales de esa
+   plataforma. «Limpiar» deja uno, porque la grilla no puede quedar vacía. */
+function aplicarAtajoKpi(cambio) {
+  cambio();
+  guardarKpis();
+  renderKpis(); renderChart(); sincronizarOpcionesKpi();
+}
+document.querySelector("#kpi-todos").onclick=()=>aplicarAtajoKpi(()=>{
+  const p=currentPlatform();
+  const conDatos=indicadoresConDatos();
+  /* Con un filtro puesto no se suman los que no tienen nada que mostrar. */
+  const elegibles=p.metrics.filter(m=>conDatos.has(m)||listaKpis().includes(m));
+  state.kpis[DATOS.tipo]=(elegibles.length?elegibles:p.metrics).slice(0,MAX_KPIS);
+});
+document.querySelector("#kpi-limpiar").onclick=()=>aplicarAtajoKpi(()=>{
+  state.kpis[DATOS.tipo]=listaKpis().slice(0,1);
+  state.selectedMetrics=state.selectedMetrics.filter(m=>state.kpis[DATOS.tipo].includes(m));
+});
+document.querySelector("#kpi-restablecer").onclick=()=>aplicarAtajoKpi(()=>{
+  const p=currentPlatform();
+  state.kpis[DATOS.tipo]=(p.defaults[state.objective]||p.metrics).slice(0,6);
+  state.selectedMetrics=state.kpis[DATOS.tipo].filter(m=>!SIN_SERIE.has(m)).slice(0,2);
+});
 
 function toggleChartMetric(metric){ if(SIN_SERIE.has(metric))return; const i=state.selectedMetrics.indexOf(metric); if(i>=0&&state.selectedMetrics.length>1)state.selectedMetrics.splice(i,1); else if(i<0){if(state.selectedMetrics.length===2)state.selectedMetrics.shift();state.selectedMetrics.push(metric);if(!state.chartTypes[metric])state.chartTypes[metric]="line"} renderKpis();renderChart(); }
 
