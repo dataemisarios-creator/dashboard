@@ -336,7 +336,7 @@ async function cargarDatos() {
 
     DATOS.filas = actual.filas || [];
     DATOS.desglose = actual.desglose || [];
-    DATOS.extras = actual.extras || [];
+    DATOS.extras = extrasGeograficos(actual.extras || []);
     DATOS.foto = actual.foto || null;
     DATOS.contenido = actual.contenido || [];
     DATOS.niveles = actual.niveles || [];
@@ -1061,7 +1061,7 @@ const COLUMNAS_EXTRA = [
   { id: "cpa", titulo: "Costo / conv.", tipo: "num" },
 ];
 const METRICAS_GRAFICO = ["clicks", "impressions", "spend", "conversions"];
-const CON_GRAFICO = new Set(["ciudades", "provincias"]);
+const CON_GRAFICO = new Set(["localidades", "provincias"]);
 const POR_PAGINA = [10, 25, 50, 100];
 /* El nombre de una ciudad ilegible no sirve para un reporte, así que el tamaño
    del texto del gráfico lo elige quien lo mira. 1 es el tamaño de siempre. */
@@ -1311,6 +1311,78 @@ function tablaContenido(){
   }).join("");
   return `<section class="panel"><div class="panel-heading"><div><p class="eyebrow">INSTAGRAM</p><h2>Contenido publicado</h2></div></div>
     <div class="table-scroll"><table class="module-table extra-table"><thead><tr><th>Publicación</th><th>Tipo</th>${COLUMNAS_CONTENIDO.map(([,t])=>`<th>${t}</th>`).join("")}</tr></thead><tbody>${cuerpo}</tbody></table></div></section>`;
+}
+
+/* ── Geografía de Google ─────────────────────────────────────────────────
+   Google entrega una cadena por fila: «lugar,contenedor,…,país». El último
+   elemento es el país y el anterior, la jurisdicción. De ahí salen las dos
+   tablas, en lugar de los campos `city` y `region`, que vienen mezclados: en
+   una misma cuenta Monserrat llega como «Buenos Aires / Comuna 1» y Palermo
+   como «Comuna 14 / Buenos Aires», y donde debería ir la provincia aparecen
+   departamentos. */
+
+/* Google nombra las jurisdicciones en inglés y sin acentos. «Buenos Aires» a
+   secas es la Ciudad Autónoma; la provincia lleva «Province». */
+const PROVINCIAS = {
+  "Buenos Aires": "Ciudad Autónoma de Buenos Aires",
+  "Buenos Aires Province": "Provincia de Buenos Aires",
+  "Cordoba Province": "Córdoba", "Santa Fe Province": "Santa Fe", "Mendoza Province": "Mendoza",
+  "Tucuman Province": "Tucumán", "Entre Rios Province": "Entre Ríos", "Salta Province": "Salta",
+  "Chaco Province": "Chaco", "Corrientes Province": "Corrientes", "Misiones Province": "Misiones",
+  "Santiago del Estero Province": "Santiago del Estero", "San Juan Province": "San Juan",
+  "Jujuy Province": "Jujuy", "Rio Negro Province": "Río Negro", "Neuquen Province": "Neuquén",
+  "Formosa Province": "Formosa", "Chubut Province": "Chubut", "San Luis Province": "San Luis",
+  "Catamarca Province": "Catamarca", "La Rioja Province": "La Rioja", "La Pampa Province": "La Pampa",
+  "Santa Cruz Province": "Santa Cruz", "Tierra del Fuego Province": "Tierra del Fuego",
+};
+const SIN_UBICACION = "Sin ubicación informada";
+/* Lo que Google deja en inglés y no está en la lista se traduce igual, para
+   que no aparezcan «Department» ni «Province» sueltos en un reporte. */
+const SUFIJOS = [[/^(.*) Department$/, "Departamento $1"], [/^(.*) Partido$/, "Partido de $1"],
+  [/^(.*) District$/, "Distrito $1"], [/^(.*) Province$/, "Provincia de $1"]];
+function traducirLugar(x) {
+  const nombre = String(x || "").trim();
+  for (const [patron, reemplazo] of SUFIJOS) if (patron.test(nombre)) return nombre.replace(patron, reemplazo);
+  return nombre;
+}
+const nombreDeProvincia = (x) => PROVINCIAS[String(x || "").trim()] || traducirLugar(x) || SIN_UBICACION;
+
+/* De «Del Viso,Pilar,Buenos Aires Province,Argentina» salen la localidad
+   (Del Viso) y la jurisdicción (Provincia de Buenos Aires). Con sólo dos
+   elementos el más específico ya es la provincia, y con uno no hay ubicación. */
+function partirUbicacion(cadena) {
+  const partes = String(cadena || "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (partes.length < 2) return { localidad: SIN_UBICACION, provincia: SIN_UBICACION };
+  const provincia = nombreDeProvincia(partes[partes.length - 2]);
+  return { localidad: partes.length > 2 ? traducirLugar(partes[0]) : provincia, provincia };
+}
+
+const SUMABLES = ["spend", "clicks", "impressions", "conversions", "all_conversions", "video_trueview_views"];
+
+/* Varias ubicaciones caen en la misma provincia, así que hay que sumarlas. */
+function agruparPor(filas, clave) {
+  const grupos = new Map();
+  for (const f of filas) {
+    const k = clave(f);
+    if (!grupos.has(k)) grupos.set(k, { lugar: k });
+    const acc = grupos.get(k);
+    for (const c of SUMABLES) acc[c] = (acc[c] || 0) + num(f[c]);
+  }
+  return [...grupos.values()];
+}
+
+/* La consulta geográfica es una sola; las dos tablas se arman acá. */
+function extrasGeograficos(extras) {
+  return extras.flatMap((e) => {
+    if (e.id !== "geo") return [e];
+    const partidas = e.filas.map((f) => ({ ...f, ...partirUbicacion(f[e.campo]) }));
+    return [
+      { id: "localidades", titulo: "Localidades", columna: "Localidad", campo: "lugar", estado: null,
+        filas: agruparPor(partidas, (f) => f.localidad) },
+      { id: "provincias", titulo: "Provincias", columna: "Provincia", campo: "lugar", estado: null,
+        filas: agruparPor(partidas, (f) => f.provincia) },
+    ];
+  });
 }
 
 function renderAdditionalModules(){

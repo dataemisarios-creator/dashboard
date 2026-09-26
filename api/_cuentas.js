@@ -43,8 +43,12 @@ const GOOGLE_EXTRAS = [
      con el peor de ambos, que es lo que se ve en Google Ads. */
   { id: 'keywords', titulo: 'Palabras clave', columna: 'Palabra clave', campo: 'keyword_text', campos: `keyword_text,keyword_status,ad_group_status,${GOOGLE_METRICAS}`, estado: 'keyword_status', estadoPadre: 'ad_group_status' },
   { id: 'terminos', titulo: 'Términos de búsqueda', columna: 'Término', campo: 'search_term', campos: `search_term,${GOOGLE_METRICAS}` },
-  { id: 'ciudades', titulo: 'Ciudades', columna: 'Ciudad', campo: 'city', campos: `city,${GOOGLE_METRICAS}` },
-  { id: 'provincias', titulo: 'Provincias', columna: 'Provincia', campo: 'region', campos: `region,${GOOGLE_METRICAS}` },
+  /* `city` y `region` de Google no son una ciudad y su provincia: se pisan
+     entre sí. Monserrat llega como «Buenos Aires / Comuna 1» y Palermo como
+     «Comuna 14 / Buenos Aires», y en el lugar de la provincia aparecen
+     departamentos («Capital Department»). La cadena de ubicación sí es fiable
+     —«lugar,contenedor,…,país»— y de ella salen las dos tablas. */
+  { id: 'geo', titulo: 'Ubicación', columna: 'Ubicación', campo: 'geo_target_most_specific_location', campos: `geo_target_most_specific_location,${GOOGLE_METRICAS}` },
 ];
 /* Sólo campos sumables: las tasas (CTR, CPC, CPM, frecuencia, VTR) se calculan
    sobre los totales del período, nunca promediando las diarias. `reach` se pide
