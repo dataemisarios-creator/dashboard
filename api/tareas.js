@@ -46,14 +46,36 @@ async function trello(ruta, parametros = {}) {
   return r.json();
 }
 
+/* Qué significa cada lista, que es lo que decide si una tarjeta está atrasada.
+   El equipo marca que algo está listo moviéndolo a HECHO, no tildando la
+   casilla de la fecha: si el panel mirara sólo la casilla contaría como
+   atrasado trabajo entregado hace un año. Se reconoce por el nombre porque
+   cada tablero de cliente arma sus listas por su cuenta, y lo que no encaja
+   con ninguna se toma como pendiente, para que nada desaparezca en silencio. */
+const ESTADO_DE_LISTA = [
+  [/hecho|done|listo|complet|finaliz/i, 'hecho'],
+  [/espera|on.?hold|pausad|bloquead|frenad/i, 'bloqueada'],
+  [/revisi|review|aprobaci/i, 'revision'],
+  [/progreso|en curso|doing|haciendo/i, 'progreso'],
+  [/always.?on|backlog|ideas/i, 'backlog'],
+];
+const estadoDeLista = (nombre) =>
+  (ESTADO_DE_LISTA.find(([patron]) => patron.test(nombre)) || [null, 'pendiente'])[1];
+
+/* Sólo lo que está en marcha puede estar atrasado. Lo entregado ya no, lo
+   frenado está frenado a propósito y el backlog no tiene fecha comprometida:
+   pintarlos de rojo todos los días es ruido que hace abandonar el panel. */
+const EN_MARCHA = new Set(['pendiente', 'progreso', 'revision']);
+
 /* El día se cuenta en la zona de Buenos Aires y no en UTC: si no, una tarjeta
    que vence hoy a las 21 aparecería vencida desde la tarde. */
 const diaLocal = (fecha) =>
   new Intl.DateTimeFormat('en-CA', { timeZone: ZONA, year: 'numeric', month: '2-digit', day: '2-digit' }).format(fecha);
 
 function ordenarTablero(bruto) {
-  const listas = (bruto.lists || []).map((l) => ({ id: l.id, nombre: l.name }));
+  const listas = (bruto.lists || []).map((l) => ({ id: l.id, nombre: l.name, estado: estadoDeLista(l.name) }));
   const nombreDeLista = Object.fromEntries(listas.map((l) => [l.id, l.nombre]));
+  const estadoPorLista = Object.fromEntries(listas.map((l) => [l.id, l.estado]));
   const miembros = (bruto.members || []).map((m) => ({ id: m.id, nombre: m.fullName || m.username, usuario: m.username }));
   const nombreDeMiembro = Object.fromEntries(miembros.map((m) => [m.id, m.nombre]));
 
@@ -62,20 +84,29 @@ function ordenarTablero(bruto) {
 
   const tarjetas = (bruto.cards || []).map((c) => {
     const vence = c.due ? new Date(c.due) : null;
-    const completa = !!c.dueComplete;
+    const estado = estadoPorLista[c.idList] || 'pendiente';
+    /* Entregada por cualquiera de los dos caminos: movida a HECHO, que es como
+       trabaja el equipo, o con la casilla de la fecha tildada. */
+    const entregada = estado === 'hecho' || !!c.dueComplete;
+    const viva = EN_MARCHA.has(estado) && !entregada;
+    /* Una misma tarjeta se usa para pedir varias cosas, marcadas con un
+       checklist, así que el avance no es sólo «hecha o no hecha». */
+    const items = c.badges?.checkItems || 0;
     return {
       id: c.id,
       nombre: c.name,
       url: c.shortUrl,
       lista: nombreDeLista[c.idList] || '',
+      estado,
       responsables: (c.idMembers || []).map((id) => nombreDeMiembro[id]).filter(Boolean),
       etiquetas: (c.labels || []).map((e) => e.name || e.color).filter(Boolean),
       vence: c.due || null,
-      completa,
-      /* Una tarjeta entregada no está vencida aunque su fecha haya pasado: es
-         el error clásico de estos tableros y por eso se mira `dueComplete`. */
-      vencida: !!vence && !completa && vence < ahora,
-      venceHoy: !!vence && !completa && diaLocal(vence) === hoy,
+      entregada,
+      viva,
+      checklist: items ? { hechos: c.badges.checkItemsChecked || 0, total: items } : null,
+      comentarios: c.badges?.comments || 0,
+      vencida: viva && !!vence && vence < ahora,
+      venceHoy: viva && !!vence && diaLocal(vence) === hoy,
       ultimoMovimiento: c.dateLastActivity || null,
     };
   });
@@ -98,22 +129,31 @@ async function leerTrello() {
     lists: 'open',
     list_fields: 'name,pos',
     cards: 'open',
-    card_fields: 'name,due,dueComplete,idList,idMembers,labels,shortUrl,dateLastActivity',
+    card_fields: 'name,due,dueComplete,idList,idMembers,labels,shortUrl,dateLastActivity,badges',
     members: 'all',
     member_fields: 'fullName,username',
   })));
 
   const ordenados = detalle.map(ordenarTablero);
   const todas = ordenados.flatMap((t) => t.tarjetas);
+  const vivas = todas.filter((c) => c.viva);
   const datos = {
     tableros: ordenados,
+    /* El resumen se calcula sobre lo que está en marcha. Las dos cifras que no
+       son de atraso están igual de arriba a propósito: lo que espera revisión
+       es trabajo frenado en el escritorio del PM, y lo bloqueado es lo que sólo
+       él puede destrabar. */
     resumen: {
       tableros: ordenados.length,
       tarjetas: todas.length,
-      vencidas: todas.filter((c) => c.vencida).length,
-      vencenHoy: todas.filter((c) => c.venceHoy).length,
-      sinFecha: todas.filter((c) => !c.vence).length,
-      sinResponsable: todas.filter((c) => !c.responsables.length).length,
+      enMarcha: vivas.length,
+      vencidas: vivas.filter((c) => c.vencida).length,
+      vencenHoy: vivas.filter((c) => c.venceHoy).length,
+      esperandoRevision: todas.filter((c) => c.estado === 'revision' && !c.entregada).length,
+      bloqueadas: todas.filter((c) => c.estado === 'bloqueada').length,
+      sinFecha: vivas.filter((c) => !c.vence).length,
+      sinResponsable: vivas.filter((c) => !c.responsables.length).length,
+      entregadas: todas.filter((c) => c.entregada).length,
     },
     leido: new Date().toISOString(),
   };
