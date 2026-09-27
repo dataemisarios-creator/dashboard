@@ -100,6 +100,12 @@
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /><path d="M9 13h6M9 17h6" /></svg></span>
             <span class="nav-label">Reportes</span><i></i>
           </button>
+          <!-- Las tareas son del administrador y del PM: el botón se esconde
+               para los demás, pero el permiso lo impone /api/tareas. -->
+          <button class="nav-item" data-view="tasks" type="button">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 4h7a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" /><path d="M9 3h6v3H9z" /><path d="m9.5 12 1.6 1.6 3.4-3.4" /><path d="M9.5 17h5" /></svg></span>
+            <span class="nav-label">Seguimiento de Tareas</span><i></i>
+          </button>
         </nav>
 
         <p class="nav-heading nav-heading-admin">
@@ -313,6 +319,21 @@
           </section>
           <!-- Los meses van sobre el fondo, fuera de la tarjeta blanca. -->
           <div class="months-grid" id="months-grid"></div>
+        </div>
+
+        <!-- ─────────────── Vista: seguimiento de tareas ─────────────── -->
+        <div class="dashboard view" id="view-tasks" hidden>
+          <section class="page-heading">
+            <div><p class="eyebrow" id="tasks-eyebrow">EMISARIOS ARGENTINA</p><h1>Seguimiento de Tareas</h1></div>
+            <div class="heading-actions"><a class="primary-action" id="tasks-board" href="#" target="_blank" rel="noopener">Abrir el tablero</a></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">ESTADO</p><h2 id="tasks-title">Tareas del equipo</h2></div><span class="tasks-leido" id="tasks-leido"></span></div>
+            <div class="kpi-grid tasks-grid" id="tasks-kpis"></div>
+          </section>
+
+          <div id="tasks-panels"></div>
         </div>
 
         <!-- ─────────────── Vista: usuarios y accesos ─────────────── -->

@@ -554,6 +554,30 @@ td.negative { color: var(--danger); }
 /* Publicado es el estado que le importa al cliente: se marca en verde para
    distinguirlo de un mes que todavía está en borrador. */
 .month-nota.es-publicado { color: #1c7a4a; }
+
+/* ── Seguimiento de tareas ─────────────────────────────────────────────
+   Usa las mismas piezas que el resto del panel: la grilla de indicadores para
+   las cifras y `module-table` para las listas. Lo único propio es el color de
+   lo vencido, que tiene que saltar sin gritar. */
+.tasks-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.tasks-card { min-height: 0; padding: 14px 18px; }
+.tasks-card .kpi-value { margin: 4px 0 0; font-size: 30px; }
+.tasks-card.es-alerta { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.tasks-card.es-alerta .kpi-value { color: var(--danger); }
+.tasks-card.es-aviso .kpi-value { color: #b3701a; }
+.tasks-leido { font-size: 12px; color: var(--muted-ink); }
+.tasks-vacio { margin: 6px 0 0; color: var(--muted-ink); font-size: 14px; }
+.tasks-table td:first-child { max-width: 420px; }
+.tasks-link { color: var(--ink); text-decoration: none; font-weight: 600; }
+.tasks-link:hover { color: var(--purple); text-decoration: underline; }
+.tasks-checklist {
+  margin-left: 8px; padding: 1px 7px; border-radius: 999px;
+  background: var(--canvas-strong); color: var(--muted-ink); font-size: 11px; font-weight: 700;
+}
+.tasks-atraso { color: var(--danger); font-weight: 700; }
+.tasks-sin { color: var(--muted-ink); font-style: italic; }
+@media (max-width: 1180px) { .tasks-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .tasks-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* Ya publicado, el segundo botón deja de ser una acción a hacer y pasa a ser
    una marcha atrás: se apaga para que no compita con nada. */
 .month-action.is-approve.esta-publicado { background: var(--canvas-strong); color: var(--muted-ink); }

@@ -13,7 +13,7 @@ function aviso(texto) {
 }
 
 /* ── Navegación entre vistas ─────────────────────────────────────────── */
-const VISTAS = ["dashboard", "reports", "users", "new-user", "profile"];
+const VISTAS = ["dashboard", "reports", "tasks", "users", "new-user", "profile"];
 const CASA = "Emisarios Argentina";
 
 /* La ruta se arma con las partes de donde está parado el usuario:
@@ -26,6 +26,7 @@ function pintarRuta(partes) {
 function rutaDeVista(nombre) {
   if (nombre === "dashboard") return [CASA, clienteActual ? clienteActual.nombre : "—", currentPlatform().title];
   if (nombre === "reports") return [CASA, "Reportes"];
+  if (nombre === "tasks") return [CASA, clienteActual ? clienteActual.nombre : "—", "Seguimiento de Tareas"];
   if (nombre === "users") return [CASA, "Usuarios y Accesos"];
   if (nombre === "profile") return [CASA, "Mi Perfil"];
   if (nombre === "new-user") {
@@ -46,6 +47,7 @@ function mostrarVista(nombre) {
   vistaActiva = nombre;
   if (nombre === "users") pintarUsuarios();
   if (nombre === "reports") pintarReportes();
+  if (nombre === "tasks") pintarTareas();
   window.scrollTo({ top: 0 });
 }
 
@@ -261,6 +263,7 @@ function elegirCliente(cliente) {
   /* Los reportes son de un cliente: si se cambia de cliente estando en esa
      vista, hay que volver a preguntar por su carpeta. */
   if (vistaActiva === "reports") pintarReportes();
+  if (vistaActiva === "tasks") pintarTareas();
 }
 
 /* Al cambiar de cuenta el panel se repinta entero: los filtros quedan aplicados. */
@@ -579,6 +582,138 @@ async function cambiarPublicacion(i, boton) {
   pintarMeses();
 }
 
+/* ── Seguimiento de tareas ───────────────────────────────────────────────
+   Un tablero de Trello por cliente. El panel no habla con Trello: pide a
+   /api/tareas, que tiene la credencial y decide quién puede mirar. */
+
+let pedidoDeTareas = 0;
+
+const CUADROS_TAREAS = [
+  { clave: "vencidas", etiqueta: "Vencidas", tono: "alerta" },
+  { clave: "vencenHoy", etiqueta: "Vencen hoy", tono: "aviso" },
+  { clave: "esperandoRevision", etiqueta: "Esperando revisión", tono: "" },
+  { clave: "bloqueadas", etiqueta: "Bloqueadas", tono: "" },
+  { clave: "enMarcha", etiqueta: "En marcha", tono: "" },
+  { clave: "sinFecha", etiqueta: "Sin fecha", tono: "" },
+];
+
+const diaCorto = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("es-AR", { day: "numeric", month: "short" });
+};
+const horaCorta = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+};
+/* Cuánto hace que venció, que es lo que se quiere saber de un vistazo. */
+function atraso(iso) {
+  const dias = Math.floor((Date.now() - new Date(iso)) / 86400000);
+  if (dias <= 0) return "hoy";
+  if (dias === 1) return "1 día";
+  if (dias < 31) return `${dias} días`;
+  const meses = Math.round(dias / 30);
+  return meses === 1 ? "1 mes" : `${meses} meses`;
+}
+
+async function pintarTareas() {
+  const pedido = (pedidoDeTareas += 1);
+  if (!clienteActual) return;
+  $("#tasks-eyebrow").textContent = clienteActual.nombre.toUpperCase();
+  $("#tasks-kpis").innerHTML = `<p class="tasks-vacio">Consultando Trello…</p>`;
+  $("#tasks-panels").innerHTML = "";
+  $("#tasks-leido").textContent = "";
+  $("#tasks-board").hidden = true;
+
+  let datos;
+  try {
+    datos = await api(`/api/tareas?cliente=${encodeURIComponent(clienteActual.id)}`);
+  } catch (e) {
+    if (pedido !== pedidoDeTareas) return;
+    $("#tasks-kpis").innerHTML = `<p class="tasks-vacio">No se pudieron leer las tareas: ${e.message}</p>`;
+    return;
+  }
+  if (pedido !== pedidoDeTareas) return;
+
+  if (!datos.tablero) {
+    $("#tasks-title").textContent = "Sin tablero";
+    $("#tasks-kpis").innerHTML = `<p class="tasks-vacio">${clienteActual.nombre} todavía no tiene un tablero de Trello conectado.</p>`;
+    return;
+  }
+
+  $("#tasks-title").textContent = datos.tablero.nombre;
+  $("#tasks-leido").textContent = `Leído a las ${horaCorta(datos.leido)}`;
+  const enlace = $("#tasks-board");
+  enlace.hidden = false;
+  enlace.href = datos.tablero.url;
+
+  const r = datos.resumen;
+  $("#tasks-kpis").innerHTML = CUADROS_TAREAS.map((c) => {
+    const valor = r[c.clave] || 0;
+    const tono = valor && c.tono ? ` es-${c.tono}` : "";
+    return `<div class="kpi-card tasks-card${tono}">
+      <span class="kpi-label">${c.etiqueta}</span>
+      <strong class="kpi-value">${valor}</strong>
+    </div>`;
+  }).join("");
+
+  const vencidas = datos.tarjetas.filter((c) => c.vencida)
+    .sort((a, b) => new Date(a.vence) - new Date(b.vence));
+  const revision = datos.tarjetas.filter((c) => c.estado === "revision");
+  const bloqueadas = datos.tarjetas.filter((c) => c.estado === "bloqueada");
+
+  $("#tasks-panels").innerHTML = [
+    tablaDeTareas("ATRASO", "Tareas vencidas", vencidas, "Nada vencido. El tablero está al día.", true),
+    tablaDeTareas("TU COLA", "Esperando revisión", revision, "No hay nada esperando revisión."),
+    tablaDeTareas("TRABADAS", "Bloqueadas y en espera", bloqueadas, "No hay nada bloqueado."),
+    tablaDePersonas(datos.personas),
+  ].join("");
+}
+
+function tablaDeTareas(rotulo, titulo, tarjetas, vacio, conAtraso = false) {
+  if (!tarjetas.length)
+    return `<section class="panel"><div class="panel-heading"><div><p class="eyebrow">${rotulo}</p><h2>${titulo}</h2></div></div><p class="tasks-vacio">${vacio}</p></section>`;
+
+  const filas = tarjetas.map((c) => {
+    const avance = c.checklist ? `<span class="tasks-checklist">${c.checklist.hechos}/${c.checklist.total}</span>` : "";
+    const quienes = c.responsables.length
+      ? c.responsables.join(", ")
+      : `<span class="tasks-sin">sin responsable</span>`;
+    return `<tr>
+      <td><a class="tasks-link" href="${c.url}" target="_blank" rel="noopener">${c.nombre}</a>${avance}</td>
+      <td>${c.lista}</td>
+      <td>${quienes}</td>
+      <td>${c.vence ? diaCorto(c.vence) : "—"}</td>
+      ${conAtraso ? `<td><span class="tasks-atraso">${atraso(c.vence)}</span></td>` : ""}
+    </tr>`;
+  }).join("");
+
+  return `<section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">${rotulo}</p><h2>${titulo}</h2></div><span class="tasks-leido">${tarjetas.length}</span></div>
+    <div class="table-scroll"><table class="module-table tasks-table">
+      <thead><tr><th>TAREA</th><th>LISTA</th><th>RESPONSABLE</th><th>VENCE</th>${conAtraso ? "<th>ATRASO</th>" : ""}</tr></thead>
+      <tbody>${filas}</tbody>
+    </table></div>
+  </section>`;
+}
+
+function tablaDePersonas(personas) {
+  if (!personas.length) return "";
+  const filas = personas.map((p) => `<tr>
+    <td>${p.persona || `<span class="tasks-sin">sin responsable</span>`}</td>
+    <td>${p.enMarcha}</td>
+    <td>${p.vencidas ? `<span class="tasks-atraso">${p.vencidas}</span>` : "0"}</td>
+    <td>${p.revision}</td>
+  </tr>`).join("");
+  return `<section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">EQUIPO</p><h2>Carga por persona</h2></div></div>
+    <div class="table-scroll"><table class="module-table tasks-table">
+      <thead><tr><th>PERSONA</th><th>EN MARCHA</th><th>VENCIDAS</th><th>EN REVISIÓN</th></tr></thead>
+      <tbody>${filas}</tbody>
+    </table></div>
+    <p class="table-help">La carga se cuenta sobre lo que está en marcha: lo entregado no dice cómo está alguien hoy. Una tarea con varios responsables suma para cada uno.</p>
+  </section>`;
+}
+
 /* ── Usuarios y accesos ──────────────────────────────────────────────────
    Todo pasa por el servidor: la lista vive cifrada del otro lado y las reglas
    (no borrarse a uno mismo, que siempre quede un administrador) las impone la
@@ -867,6 +1002,8 @@ function entrar(datos) {
   $("#profile-role").textContent = TITULO_ROL[datos.rol] || datos.rol;
   // Sólo un administrador entra a la sección de accesos.
   $('[data-view="users"]').hidden = datos.rol !== "Administrador";
+  // Las tareas del equipo son para quien las controla, no para quien las hace.
+  $('[data-view="tasks"]').hidden = !["Administrador", "PM"].includes(datos.rol);
   cargarUsuarios();
   // cargarClientes elige el primer cliente y eso dispara la consulta a Windsor.
   cargarClientes();

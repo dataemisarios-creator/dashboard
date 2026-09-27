@@ -10,6 +10,8 @@
  *
  * `drive` es el id de la carpeta del cliente en Drive, no su nombre: el
  * nombre se puede cambiar en Drive sin romper nada, el id no cambia nunca.
+ * `trello` es el id del tablero de ese cliente. Hay un tablero por cuenta, y
+ * el cliente que no tenga uno declarado simplemente no muestra tareas.
  *
  * `id` es único dentro del cliente y `tipo` dice con qué juego de indicadores
  * se lee la cuenta. Así un mismo cliente puede tener dos perfiles de la misma
@@ -129,6 +131,7 @@ export const CLIENTES = [
     nombre: 'Geely Argentina',
     inicial: 'GA',
     drive: '1KiMgFjWoaLMBYkVYBTwonEWNksnSHfNs',
+    trello: '686f096eee168b18b8e720c6',
     cuentas: [
       google('610-951-8860', 'USD'),
       meta('988319067489641', 'USD'),

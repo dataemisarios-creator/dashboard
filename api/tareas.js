@@ -1,4 +1,5 @@
 import { exigirSesion, usuarioDeSesion, esGestor } from './_comun.js';
+import { buscarCliente } from './_cuentas.js';
 
 /**
  * Las tareas del equipo salen de Trello. El navegador no habla con Trello: la
@@ -9,17 +10,20 @@ import { exigirSesion, usuarioDeSesion, esGestor } from './_comun.js';
  * Y sólo ve los tableros donde esté la cuenta que lo autorizó: no existe en
  * Trello un permiso de «administrador que ve todo», eso se resuelve sumando esa
  * cuenta al espacio de trabajo de la agencia.
+ *
+ * Hay un tablero por cliente, declarado en `_cuentas.js`. Los demás tableros
+ * que el testigo alcance a ver no se muestran: el panel enseña las tareas del
+ * cliente que se está mirando, no todo lo que hay en la cuenta de Trello.
  */
 
 const API = 'https://api.trello.com/1';
 const ZONA = 'America/Argentina/Buenos_Aires';
+/* Un pedido por tablero cada minuto, muy lejos del límite de Trello de 100
+   cada diez segundos. */
 const CACHE_MS = 60 * 1000;
-/* Un pedido por tablero cada minuto. El límite de Trello es de 100 cada diez
-   segundos, así que el tope está para que un día con muchos tableros no lo
-   roce, no porque hoy estemos cerca. */
-const MAX_TABLEROS = 40;
 
-let cache = null;
+/* Una entrada de caché por tablero. */
+const cache = new Map();
 
 function credenciales() {
   const key = process.env.TRELLO_KEY;
@@ -118,17 +122,11 @@ function ordenarTablero(bruto) {
   return { id: bruto.id, nombre: bruto.name, url: bruto.url, listas, miembros, tarjetas };
 }
 
-async function leerTrello() {
-  if (cache && cache.vence > Date.now()) return cache.datos;
+async function leerTablero(idTablero) {
+  const guardado = cache.get(idTablero);
+  if (guardado && guardado.vence > Date.now()) return guardado.datos;
 
-  const tableros = await trello('/members/me/boards', {
-    filter: 'open',
-    fields: 'name,url',
-  });
-  if (tableros.length > MAX_TABLEROS)
-    throw new Error(`La cuenta ve ${tableros.length} tableros y el panel está preparado para ${MAX_TABLEROS}.`);
-
-  const detalle = await Promise.all(tableros.map((t) => trello(`/boards/${t.id}`, {
+  const bruto = await trello(`/boards/${idTablero}`, {
     fields: 'name,url',
     lists: 'open',
     list_fields: 'name,pos',
@@ -136,19 +134,34 @@ async function leerTrello() {
     card_fields: 'name,due,dueComplete,idList,idMembers,labels,shortUrl,dateLastActivity,badges',
     members: 'all',
     member_fields: 'fullName,username',
-  })));
+  });
 
-  const ordenados = detalle.map(ordenarTablero);
-  const todas = ordenados.flatMap((t) => t.tarjetas);
+  const tablero = ordenarTablero(bruto);
+  const todas = tablero.tarjetas;
   const vivas = todas.filter((c) => c.viva);
+
+  /* La carga de cada persona se cuenta sobre lo que está en marcha: lo que
+     alguien entregó hace tres meses no dice nada de cómo está hoy. */
+  const porPersona = new Map();
+  for (const c of vivas) {
+    for (const quien of (c.responsables.length ? c.responsables : [null])) {
+      const fila = porPersona.get(quien) || { persona: quien, enMarcha: 0, vencidas: 0, revision: 0 };
+      fila.enMarcha += 1;
+      if (c.vencida) fila.vencidas += 1;
+      if (c.estado === 'revision') fila.revision += 1;
+      porPersona.set(quien, fila);
+    }
+  }
+
   const datos = {
-    tableros: ordenados,
-    /* El resumen se calcula sobre lo que está en marcha. Las dos cifras que no
-       son de atraso están igual de arriba a propósito: lo que espera revisión
-       es trabajo frenado en el escritorio del PM, y lo bloqueado es lo que sólo
-       él puede destrabar. */
+    tablero: { id: tablero.id, nombre: tablero.nombre, url: tablero.url },
+    listas: tablero.listas,
+    tarjetas: todas,
+    personas: [...porPersona.values()].sort((a, b) => b.vencidas - a.vencidas || b.enMarcha - a.enMarcha),
+    /* Las dos cifras que no son de atraso están igual de arriba a propósito: lo
+       que espera revisión es trabajo frenado en el escritorio del PM, y lo
+       bloqueado es lo que sólo él puede destrabar. */
     resumen: {
-      tableros: ordenados.length,
       tarjetas: todas.length,
       enMarcha: vivas.length,
       vencidas: vivas.filter((c) => c.vencida).length,
@@ -162,7 +175,7 @@ async function leerTrello() {
     leido: new Date().toISOString(),
   };
 
-  cache = { datos, vence: Date.now() + CACHE_MS };
+  cache.set(idTablero, { datos, vence: Date.now() + CACHE_MS });
   return datos;
 }
 
@@ -177,8 +190,13 @@ export default async function handler(req, res) {
     if (!esGestor(await usuarioDeSesion(sesion)))
       return res.status(403).json({ error: 'Las tareas del equipo son para administradores y project managers.' });
 
+    const cliente = buscarCliente(String(req.query?.cliente || ''));
+    if (!cliente) return res.status(404).json({ error: 'Ese cliente no existe.' });
+
     res.setHeader('Cache-Control', 'private, max-age=0, no-store');
-    return res.status(200).json(await leerTrello());
+    /* Un cliente sin tablero declarado no es un error: todavía no tiene uno. */
+    if (!cliente.trello) return res.status(200).json({ tablero: null });
+    return res.status(200).json(await leerTablero(cliente.trello));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
