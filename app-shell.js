@@ -593,12 +593,17 @@ async function cambiarPublicacion(i, boton) {
 
 let pedidoDeTareas = 0;
 let tareasCargadas = null;
-let filtroDeTareas = "vencidas";
-let personaDeTareas = "";
+let filtroDeTareas = "todas";
+/* Varios responsables a la vez: la pregunta suele ser «cómo van los tres de
+   diseño», no «cómo va uno». */
+const personasDeTareas = new Set();
+const paginaDeTareas = {};
 
-/* Los seis cuadros son el filtro, no un adorno: cada uno elige qué se lista
-   abajo. Antes parecían botones —se movían al pasar el mouse— y no hacían
-   nada, y las tarjetas sin fecha no se veían en ninguna parte. */
+const SIN_RESPONSABLE = "__sin__";
+const POR_PAGINA_TAREAS = [5, 10, 25, 50];
+
+/* Los cuadros son el filtro: cada uno elige qué se lista abajo, y «Todas»
+   muestra los seis paneles uno debajo del otro. */
 const CUADROS_TAREAS = [
   { clave: "vencidas", etiqueta: "Vencidas", titulo: "Tareas vencidas", rotulo: "ATRASO", tono: "alerta",
     vacio: "Nada vencido. El tablero está al día.", prueba: (c) => c.vencida },
@@ -613,7 +618,7 @@ const CUADROS_TAREAS = [
   { clave: "sinFecha", etiqueta: "Sin fecha", titulo: "En marcha y sin fecha de entrega", rotulo: "SIN PLAZO", tono: "",
     vacio: "Todas las tareas en marcha tienen fecha.", prueba: (c) => c.viva && !c.vence },
 ];
-const cuadroActivo = () => CUADROS_TAREAS.find((c) => c.clave === filtroDeTareas) || CUADROS_TAREAS[0];
+const TODAS_TAREAS = { clave: "todas", etiqueta: "Todas", prueba: (c) => c.viva || c.estado === "bloqueada" };
 
 const diaCorto = (iso) => {
   const d = new Date(iso);
@@ -633,9 +638,11 @@ function atraso(iso) {
   return meses === 1 ? "1 mes" : `${meses} meses`;
 }
 
-const SIN_RESPONSABLE = "__sin__";
-const deLaPersona = (c) => !personaDeTareas
-  || (personaDeTareas === SIN_RESPONSABLE ? !c.responsables.length : c.responsables.includes(personaDeTareas));
+const deLasPersonas = (c) => !personasDeTareas.size
+  || (personasDeTareas.has(SIN_RESPONSABLE) && !c.responsables.length)
+  || c.responsables.some((r) => personasDeTareas.has(r));
+
+const hojaDe = (clave) => (paginaDeTareas[clave] ||= { pagina: 1, porPagina: 5 });
 
 async function pintarTareas(forzar = false) {
   const pedido = (pedidoDeTareas += 1);
@@ -643,10 +650,11 @@ async function pintarTareas(forzar = false) {
   tareasCargadas = null;
   $("#tasks-eyebrow").textContent = clienteActual.nombre.toUpperCase();
   $("#tasks-kpis").innerHTML = `<p class="tasks-vacio">Consultando Trello…</p>`;
-  if (forzar) aviso("Volviendo a leer el tablero…");
+  $("#tasks-gente").hidden = true;
   $("#tasks-panels").innerHTML = "";
   $("#tasks-leido").textContent = "";
   $("#tasks-board").hidden = true;
+  if (forzar) aviso("Volviendo a leer el tablero…");
 
   let datos;
   try {
@@ -666,8 +674,8 @@ async function pintarTareas(forzar = false) {
 
   tareasCargadas = datos;
   /* Al cambiar de cliente, un responsable del tablero anterior no existe acá. */
-  if (personaDeTareas && personaDeTareas !== SIN_RESPONSABLE
-      && !datos.personas.some((p) => p.persona === personaDeTareas)) personaDeTareas = "";
+  const conocidas = new Set(datos.personas.map((p) => p.persona || SIN_RESPONSABLE));
+  for (const quien of [...personasDeTareas]) if (!conocidas.has(quien)) personasDeTareas.delete(quien);
 
   $("#tasks-title").textContent = datos.tablero.nombre;
   $("#tasks-leido").textContent = `Leído a las ${horaCorta(datos.leido)}`;
@@ -680,11 +688,11 @@ async function pintarTareas(forzar = false) {
 
 function dibujarTareas() {
   if (!tareasCargadas) return;
-  const propias = tareasCargadas.tarjetas.filter(deLaPersona);
+  const propias = tareasCargadas.tarjetas.filter(deLasPersonas);
 
-  /* Las cifras se recalculan con el responsable elegido: la pregunta de un PM
-     no es «cuántas hay vencidas» sino «cuántas tiene vencidas Melisa». */
-  $("#tasks-kpis").innerHTML = CUADROS_TAREAS.map((c) => {
+  /* Las cifras se recalculan con los responsables elegidos: la pregunta de un
+     PM no es «cuántas hay vencidas» sino «cuántas tienen vencidas estos». */
+  $("#tasks-kpis").innerHTML = [TODAS_TAREAS, ...CUADROS_TAREAS].map((c) => {
     const valor = propias.filter(c.prueba).length;
     const clases = ["kpi-card", "tasks-card"];
     if (valor && c.tono) clases.push(`es-${c.tono}`);
@@ -699,31 +707,57 @@ function dibujarTareas() {
     dibujarTareas();
   }));
 
-  const cuadro = cuadroActivo();
-  $("#tasks-panels").innerHTML = tablaDeTareas(cuadro, propias.filter(cuadro.prueba))
+  pintarChipsDePersonas();
+
+  const cuadros = filtroDeTareas === "todas"
+    ? CUADROS_TAREAS
+    : [CUADROS_TAREAS.find((c) => c.clave === filtroDeTareas) || CUADROS_TAREAS[0]];
+
+  $("#tasks-panels").innerHTML =
+    cuadros.map((c) => tablaDeTareas(c, propias.filter(c.prueba))).join("")
     + tablaDePersonas(tareasCargadas.personas);
 
-  const selector = $("#tasks-persona");
-  if (selector) {
-    selector.value = personaDeTareas;
-    selector.onchange = () => { personaDeTareas = selector.value; dibujarTareas(); };
-  }
-  $$("[data-tarea-persona]").forEach((b) => (b.onclick = () => {
-    personaDeTareas = personaDeTareas === b.dataset.tareaPersona ? "" : b.dataset.tareaPersona;
+  $$("[data-tarea-pagina]").forEach((b) => (b.onclick = () => {
+    const [clave, n] = b.dataset.tareaPagina.split(":");
+    hojaDe(clave).pagina = Number(n);
     dibujarTareas();
   }));
+  $$("[data-tarea-porpagina]").forEach((sel) => (sel.onchange = () => {
+    const hoja = hojaDe(sel.dataset.tareaPorpagina);
+    hoja.porPagina = Number(sel.value);
+    hoja.pagina = 1;
+    dibujarTareas();
+  }));
+  $$("[data-tarea-persona]").forEach((b) => (b.onclick = () => alternarPersona(b.dataset.tareaPersona)));
 }
 
-function selectorDePersonas() {
+function alternarPersona(quien) {
+  if (!quien) personasDeTareas.clear();
+  else if (personasDeTareas.has(quien)) personasDeTareas.delete(quien);
+  else personasDeTareas.add(quien);
+  /* Con otro filtro el largo de cada panel cambia; volver a la página tres de
+     algo que ahora tiene una sola no sirve de nada. */
+  for (const clave of Object.keys(paginaDeTareas)) paginaDeTareas[clave].pagina = 1;
+  dibujarTareas();
+}
+
+/* Los responsables se eligen como los objetivos del panel: botones en píldora,
+   varios a la vez, y «Todo el equipo» que los apaga a todos. */
+function pintarChipsDePersonas() {
+  const fila = $("#tasks-gente");
   const personas = tareasCargadas.personas;
-  const opciones = personas.map((p) => {
-    const valor = p.persona || SIN_RESPONSABLE;
-    const nombre = p.persona || "Sin responsable";
-    return `<option value="${valor}">${nombre} (${p.enMarcha})</option>`;
-  }).join("");
-  return `<label class="tasks-filtro"><span>Responsable</span>
-    <select id="tasks-persona"><option value="">Todo el equipo</option>${opciones}</select>
-  </label>`;
+  fila.hidden = !personas.length;
+  if (!personas.length) return;
+
+  const chip = (valor, texto, cuantas, activo) =>
+    `<button class="objective-button ${activo ? "active" : ""}" type="button" data-tarea-persona="${valor}">${texto}${cuantas === null ? "" : ` <b>${cuantas}</b>`}</button>`;
+
+  $("#tasks-gente-chips").innerHTML =
+    chip("", "Todo el equipo", null, !personasDeTareas.size)
+    + personas.map((p) => {
+      const valor = p.persona || SIN_RESPONSABLE;
+      return chip(valor, p.persona || "Sin responsable", p.enMarcha, personasDeTareas.has(valor));
+    }).join("");
 }
 
 function tablaDeTareas(cuadro, tarjetas) {
@@ -731,13 +765,21 @@ function tablaDeTareas(cuadro, tarjetas) {
   const conFecha = cuadro.clave !== "sinFecha";
   const cabecera = `<div class="panel-heading">
       <div><p class="eyebrow">${cuadro.rotulo}</p><h2>${cuadro.titulo}</h2></div>
-      ${selectorDePersonas()}
+      <span class="tasks-leido">${tarjetas.length}</span>
     </div>`;
 
   if (!tarjetas.length)
     return `<section class="panel">${cabecera}<p class="tasks-vacio">${cuadro.vacio}</p></section>`;
 
-  const filas = tarjetas.map((c) => {
+  /* Un panel con cuarenta filas empuja todo lo demás fuera de la pantalla: se
+     muestran las primeras y el usuario decide si quiere ver más. */
+  const hoja = hojaDe(cuadro.clave);
+  const paginas = Math.max(1, Math.ceil(tarjetas.length / hoja.porPagina));
+  if (hoja.pagina > paginas) hoja.pagina = paginas;
+  const desde = (hoja.pagina - 1) * hoja.porPagina;
+  const visibles = tarjetas.slice(desde, desde + hoja.porPagina);
+
+  const filas = visibles.map((c) => {
     const avance = c.checklist ? `<span class="tasks-checklist">${c.checklist.hechos}/${c.checklist.total}</span>` : "";
     const quienes = c.responsables.length
       ? c.responsables.join(", ")
@@ -751,12 +793,26 @@ function tablaDeTareas(cuadro, tarjetas) {
     </tr>`;
   }).join("");
 
+  const pie = tarjetas.length <= POR_PAGINA_TAREAS[0] ? "" : `<div class="paginado">
+      <label>Ver <select data-tarea-porpagina="${cuadro.clave}">${POR_PAGINA_TAREAS
+        .map((n) => `<option value="${n}" ${n === hoja.porPagina ? "selected" : ""}>${n}</option>`).join("")}</select> por página</label>
+      <span>${desde + 1} a ${desde + visibles.length} de ${tarjetas.length}</span>
+      <span class="paginado-botones">
+        <button data-tarea-pagina="${cuadro.clave}:1" type="button" ${hoja.pagina === 1 ? "disabled" : ""}>«</button>
+        <button data-tarea-pagina="${cuadro.clave}:${hoja.pagina - 1}" type="button" ${hoja.pagina === 1 ? "disabled" : ""}>‹</button>
+        <b>${hoja.pagina} / ${paginas}</b>
+        <button data-tarea-pagina="${cuadro.clave}:${hoja.pagina + 1}" type="button" ${hoja.pagina === paginas ? "disabled" : ""}>›</button>
+        <button data-tarea-pagina="${cuadro.clave}:${paginas}" type="button" ${hoja.pagina === paginas ? "disabled" : ""}>»</button>
+      </span>
+    </div>`;
+
   return `<section class="panel">${cabecera}
     <div class="table-scroll"><table class="module-table tasks-table">
       <thead><tr><th>TAREA</th><th>LISTA</th><th>RESPONSABLE</th><th>${conFecha ? "VENCE" : "ÚLTIMO MOVIMIENTO"}</th>${conAtraso ? "<th>ATRASO</th>" : ""}</tr></thead>
       <tbody>${filas}</tbody>
     </table></div>
-    <p class="table-help">${tarjetas.length} ${tarjetas.length === 1 ? "tarea" : "tareas"}${personaDeTareas ? " con el responsable elegido" : ""}. El nombre abre la tarjeta en Trello.</p>
+    ${pie}
+    <p class="table-help">El nombre abre la tarjeta en Trello.</p>
   </section>`;
 }
 
@@ -764,9 +820,8 @@ function tablaDePersonas(personas) {
   if (!personas.length) return "";
   const filas = personas.map((p) => {
     const valor = p.persona || SIN_RESPONSABLE;
-    const elegida = personaDeTareas === valor;
     const cero = (n) => (n ? n : `<span class="tasks-cero">0</span>`);
-    return `<tr class="${elegida ? "es-elegida" : ""}" data-tarea-persona="${valor}">
+    return `<tr class="${personasDeTareas.has(valor) ? "es-elegida" : ""}" data-tarea-persona="${valor}">
       <td>${p.persona || `<span class="tasks-sin">sin responsable</span>`}</td>
       <td>${cero(p.pendiente)}</td>
       <td>${cero(p.progreso)}</td>
