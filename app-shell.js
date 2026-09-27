@@ -148,7 +148,12 @@ $("#connection").onclick = () => {
 /* Volver a preguntarle a Windsor sin cambiar nada: los mismos filtros, datos
    nuevos. Cambiar un filtro ya vuelve a consultar, pero no siempre hay un
    filtro que cambiar para ver lo último. */
+/* Actualizar vuelve a pedir lo que se está mirando. Antes siempre consultaba a
+   Windsor, así que en Reportes y en Tareas parecía no hacer nada: los datos de
+   esas dos pantallas no vienen de ahí. */
 $("#refrescar").onclick = () => {
+  if (vistaActiva === "tasks") { pintarTareas(true); return; }
+  if (vistaActiva === "reports") { pintarReportes(); return; }
   if (window.DatosEmisarios) window.DatosEmisarios.cargar();
 };
 pintarConexion();
@@ -632,19 +637,20 @@ const SIN_RESPONSABLE = "__sin__";
 const deLaPersona = (c) => !personaDeTareas
   || (personaDeTareas === SIN_RESPONSABLE ? !c.responsables.length : c.responsables.includes(personaDeTareas));
 
-async function pintarTareas() {
+async function pintarTareas(forzar = false) {
   const pedido = (pedidoDeTareas += 1);
   if (!clienteActual) return;
   tareasCargadas = null;
   $("#tasks-eyebrow").textContent = clienteActual.nombre.toUpperCase();
   $("#tasks-kpis").innerHTML = `<p class="tasks-vacio">Consultando Trello…</p>`;
+  if (forzar) aviso("Volviendo a leer el tablero…");
   $("#tasks-panels").innerHTML = "";
   $("#tasks-leido").textContent = "";
   $("#tasks-board").hidden = true;
 
   let datos;
   try {
-    datos = await api(`/api/tareas?cliente=${encodeURIComponent(clienteActual.id)}`);
+    datos = await api(`/api/tareas?cliente=${encodeURIComponent(clienteActual.id)}${forzar ? "&refrescar=1" : ""}`);
   } catch (e) {
     if (pedido !== pedidoDeTareas) return;
     $("#tasks-kpis").innerHTML = `<p class="tasks-vacio">No se pudieron leer las tareas: ${e.message}</p>`;

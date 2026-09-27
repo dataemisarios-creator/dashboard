@@ -122,9 +122,12 @@ function ordenarTablero(bruto) {
   return { id: bruto.id, nombre: bruto.name, url: bruto.url, listas, miembros, tarjetas };
 }
 
-async function leerTablero(idTablero) {
+async function leerTablero(idTablero, refrescar = false) {
   const guardado = cache.get(idTablero);
-  if (guardado && guardado.vence > Date.now()) return guardado.datos;
+  /* La caché de un minuto evita machacar a Trello mientras alguien mira la
+     pantalla, pero tiene que poder saltearse: si acaba de mover una tarjeta y
+     aprieta Actualizar, el panel no puede seguir mostrando lo de hace un rato. */
+  if (!refrescar && guardado && guardado.vence > Date.now()) return guardado.datos;
 
   const bruto = await trello(`/boards/${idTablero}`, {
     fields: 'name,url',
@@ -196,7 +199,7 @@ export default async function handler(req, res) {
     res.setHeader('Cache-Control', 'private, max-age=0, no-store');
     /* Un cliente sin tablero declarado no es un error: todavía no tiene uno. */
     if (!cliente.trello) return res.status(200).json({ tablero: null });
-    return res.status(200).json(await leerTablero(cliente.trello));
+    return res.status(200).json(await leerTablero(cliente.trello, req.query?.refrescar === '1'));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
