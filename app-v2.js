@@ -119,7 +119,25 @@ const ALCANCE_APARTE = new Set(["meta", "tiktok"]);
 /* Estos no tienen serie diaria: son una foto del día de la consulta o un
    recuento de todo el período, así que no se pueden dibujar por día. La
    tarjeta se muestra igual, pero no se puede llevar al gráfico. */
-const SIN_SERIE = new Set(["followers", "feedPosts", "reels"]);
+const SIN_SERIE = new Set(["feedPosts", "reels"]);
+
+/* Instagram informa los seguidores totales de hoy, no los de cada día. La
+   curva se puede reconstruir hacia atrás con el movimiento diario: los
+   seguidores de ayer son los de hoy menos lo que se ganó y se perdió hoy.
+   Sólo se ofrece cuando están las altas y las bajas de todo el período, que
+   es lo que la API informa para los últimos 30 días. */
+const netoDelDia = (f) => (f.follower_count === null || f.follower_count === undefined
+  ? null : 2 * num(f.follower_count) - num(f.follows_and_unfollows));
+function seguidoresReconstruibles() {
+  if (DATOS.tipo !== "instagram" || !num(DATOS.foto && DATOS.foto.followers_count)) return false;
+  const filas = DATOS.filas.filter((f) => f.date);
+  return filas.length > 0 && filas.every((f) => netoDelDia(f) !== null);
+}
+/* Un indicador sin serie diaria no se puede llevar al gráfico. */
+function sinSerie(metric) {
+  if (SIN_SERIE.has(metric)) return true;
+  return metric === "followers" && !seguidoresReconstruibles();
+}
 /* Los que llegan en la consulta de foto, que no tiene fecha. */
 const CAMPOS_FOTO = { instagram: { followers: "followers_count" } };
 /* Cada tipo de publicación de Instagram, tal como lo nombra la API. */
@@ -533,28 +551,35 @@ function metricLabel(metric) {
 
 /* Iconos de las vistas orgánicas. En medios pagos no van: ahí lo que ordena la
    lectura es el número, y un icono por tarjeta sería ruido. */
+/* Iconos de las vistas orgánicas. Cada indicador tiene su glifo macizo sobre
+   una pastilla de color propia: a doce tarjetas se las reconoce por el color
+   antes de leer la etiqueta, que es lo que hace escaneable la grilla. En
+   medios pagos no van: ahí lo que ordena la lectura es el número. */
 const ICONOS_ORGANICOS = {
-  followers: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17.5" cy="9.5" r="2.4"/><path d="M15 19a4.6 4.6 0 0 1 5.5-3.9"/>',
-  newFollowers: '<circle cx="10" cy="8" r="3.4"/><path d="M4 19a6 6 0 0 1 12 0"/><path d="M18 8v6M15 11h6"/>',
-  unfollows: '<circle cx="10" cy="8" r="3.4"/><path d="M4 19a6 6 0 0 1 12 0"/><path d="M15 11h6"/>',
-  balance: '<path d="M4 17h4V9H4zM10 17h4V5h-4zM16 17h4v-5h-4z"/>',
-  reels: '<rect x="3.5" y="3.5" width="17" height="17" rx="5"/><path d="M8 3.8 11 9M14 3.8 17 9M3.6 9h16.8"/><path d="m11 12.6 3.4 1.9-3.4 1.9z"/>',
-  feedPosts: '<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="m4 16 4-4 4 4 3-3 5 5"/><circle cx="9" cy="8.5" r="1.4"/>',
-  stories: '<circle cx="12" cy="12" r="8.5" stroke-dasharray="3.4 2.6"/><circle cx="12" cy="12" r="3.4"/>',
-  reach: '<circle cx="12" cy="9" r="2.8"/><path d="M7 19a5 5 0 0 1 10 0"/><path d="M4.5 7.5 2 5M19.5 7.5 22 5"/>',
-  interactions: '<path d="M4 12a8 8 0 1 1 3.2 6.4L3 20l1.3-4.1A7.9 7.9 0 0 1 4 12Z"/>',
-  shares: '<path d="M4 12v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/><path d="M12 15V4M8 7.5 12 3.5l4 4"/>',
-  saves: '<path d="M6 3.5h12v17l-6-4.2-6 4.2z"/>',
-  likes: '<path d="M12 20s-7.5-4.6-7.5-9.3A4.2 4.2 0 0 1 12 8a4.2 4.2 0 0 1 7.5 2.7C19.5 15.4 12 20 12 20Z"/>',
-  comments: '<path d="M20 15a2.5 2.5 0 0 1-2.5 2.5H8L4 21V6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5z"/>',
-  videoViews: '<rect x="3" y="5.5" width="18" height="13" rx="3"/><path d="m10.5 10 4.5 2.5-4.5 2.5z"/>',
-  views: '<path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/>',
+  followers: ['#a98bff', '#6d3bcc', '<path d="M9 11.6a3.6 3.6 0 1 0 0-7.2 3.6 3.6 0 0 0 0 7.2Zm0 1.6c-3.4 0-6.2 2-6.2 4.5V20h12.4v-2.3c0-2.5-2.8-4.5-6.2-4.5Z"/><path d="M17.2 11.9a2.9 2.9 0 1 0 0-5.8 2.9 2.9 0 0 0 0 5.8Zm.6 1.5c-.9 0-1.7.1-2.4.4 1 1 1.6 2.3 1.6 3.9V20h5v-2c0-2.4-2-4.6-4.2-4.6Z" opacity=".72"/>'],
+  newFollowers: ['#8fd3ff', '#2f8ede', '<path d="M10 11.6a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4Zm0 1.6c-3.5 0-6.4 2.1-6.4 4.6V20h12.8v-2.2c0-2.5-2.9-4.6-6.4-4.6Z"/><path d="M18.2 6.6h1.6v2.6h2.6v1.6h-2.6v2.6h-1.6v-2.6h-2.6V9.2h2.6z"/>'],
+  unfollows: ['#ffa8a8', '#e04b4b', '<path d="M10 11.6a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4Zm0 1.6c-3.5 0-6.4 2.1-6.4 4.6V20h12.8v-2.2c0-2.5-2.9-4.6-6.4-4.6Z"/><path d="M15.6 9.2h6.8v1.6h-6.8z"/>'],
+  balance: ['#7ce0b8', '#1fae77', '<path d="M3.6 14.4h3.6V20H3.6zM10.2 8.4h3.6V20h-3.6zM16.8 11.4h3.6V20h-3.6z"/><path d="M4 9.6 9.4 5l3.4 2.6L19 3.2l1 1.5-7.1 4.9-3.4-2.6L5 11z" opacity=".72"/>'],
+  reels: ['#ff9fdc', '#d3479f', '<path d="M6.5 3.4h11a3.1 3.1 0 0 1 3.1 3.1v11a3.1 3.1 0 0 1-3.1 3.1h-11a3.1 3.1 0 0 1-3.1-3.1v-11a3.1 3.1 0 0 1 3.1-3.1Zm3.9 6.7v4.9l4.3-2.5z" /><path d="M8.6 3.6 11 8h2.2l-2.4-4.4zM14.3 3.6 16.7 8h2.2l-2.4-4.4z" opacity=".65"/>'],
+  feedPosts: ['#9fb0ff', '#4f5fd0', '<path d="M5 3.5h14a2.5 2.5 0 0 1 2.5 2.5v12a2.5 2.5 0 0 1-2.5 2.5H5A2.5 2.5 0 0 1 2.5 18V6A2.5 2.5 0 0 1 5 3.5Zm-.6 13.9L8.6 13l3 3 3.2-3.4 4.8 5v.4a.9.9 0 0 1-.9.9H5.3a.9.9 0 0 1-.9-.9Z"/><circle cx="8.6" cy="8.4" r="1.7" opacity=".7"/>'],
+  stories: ['#ffb694', '#f2643a', '<path d="M12 2.6a9.4 9.4 0 1 1 0 18.8 9.4 9.4 0 0 1 0-18.8Zm0 2.2a7.2 7.2 0 1 0 0 14.4 7.2 7.2 0 0 0 0-14.4Z" opacity=".6"/><circle cx="12" cy="12" r="4"/>'],
+  reach: ['#c0a5ff', '#7b4de0', '<circle cx="12" cy="8.6" r="3.2"/><path d="M6.2 19.4a5.8 5.8 0 0 1 11.6 0 .6.6 0 0 1-.6.6H6.8a.6.6 0 0 1-.6-.6Z"/><path d="M4.6 8.1 2.2 5.7l1.4-1.4L6 6.7zM19.4 8.1 21.8 5.7l-1.4-1.4L18 6.7z" opacity=".65"/>'],
+  interactions: ['#ffc477', '#f4801f', '<path d="M12 3.2c-5 0-9 3.6-9 8 0 2.2 1 4.2 2.7 5.6L5 21.2l4.4-2a10.6 10.6 0 0 0 2.6.3c5 0 9-3.6 9-8s-4-8.3-9-8.3Z"/><circle cx="8.4" cy="11.2" r="1.25" fill="#fff" opacity=".85"/><circle cx="12" cy="11.2" r="1.25" fill="#fff" opacity=".85"/><circle cx="15.6" cy="11.2" r="1.25" fill="#fff" opacity=".85"/>'],
+  shares: ['#83e8d1', '#22b394', '<path d="M18.4 2.8a3 3 0 1 1-2.6 4.5l-5.3 2.6a3 3 0 0 1 0 2.2l5.3 2.6a3 3 0 1 1-.8 1.6l-5.3-2.6a3 3 0 1 1 0-5.4l5.3-2.6a3 3 0 0 1 3.4-2.9Z"/>'],
+  saves: ['#ffdc8a', '#f0a90c', '<path d="M6.6 2.8h10.8a1.4 1.4 0 0 1 1.4 1.4v16.1a.8.8 0 0 1-1.25.66L12 17.2l-5.55 3.76A.8.8 0 0 1 5.2 20.3V4.2a1.4 1.4 0 0 1 1.4-1.4Z"/>'],
+  likes: ['#ff9bbb', '#ee3d68', '<path d="M12 20.7a1.5 1.5 0 0 1-.9-.3C8 18.2 2.8 14 2.8 9.7A5 5 0 0 1 12 6.9a5 5 0 0 1 9.2 2.8c0 4.3-5.2 8.5-8.3 10.7a1.5 1.5 0 0 1-.9.3Z"/>'],
+  comments: ['#96c3ff', '#3b7fe0', '<path d="M4.4 3.4h15.2A2.4 2.4 0 0 1 22 5.8v8.6a2.4 2.4 0 0 1-2.4 2.4H9.9L5 20.9a.8.8 0 0 1-1.3-.62V16.6A2.4 2.4 0 0 1 2 14.4V5.8a2.4 2.4 0 0 1 2.4-2.4Z"/><circle cx="8.4" cy="10.1" r="1.25" fill="#fff" opacity=".9"/><circle cx="12" cy="10.1" r="1.25" fill="#fff" opacity=".9"/><circle cx="15.6" cy="10.1" r="1.25" fill="#fff" opacity=".9"/>'],
+  videoViews: ['#c0a5ff', '#7b4de0', '<path d="M4 5.2h12a2.6 2.6 0 0 1 2.6 2.6v8.4A2.6 2.6 0 0 1 16 18.8H4a2.6 2.6 0 0 1-2.6-2.6V7.8A2.6 2.6 0 0 1 4 5.2Zm5.4 3.6v6.4l5-3.2z" fill="#fff" opacity=".95"/><path d="M20 8.4 22.6 6.7v10.6L20 15.6z"/>'],
+  views: ['#b7a4ff', '#6d3bcc', '<path d="M12 5C6.2 5 2 11.2 2 12s4.2 7 10 7 10-6.2 10-7-4.2-7-10-7Zm0 10.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2Z"/><circle cx="12" cy="12" r="1.7" fill="#fff" opacity=".9"/>'],
 };
 const iconoDeMetrica = (metric) => {
   if (currentPlatform().paid) return "";
-  const trazo = ICONOS_ORGANICOS[metric];
-  return trazo ? `<i class="kpi-icono" aria-hidden="true"><svg viewBox="0 0 24 24">${trazo}</svg></i>` : "";
+  const icono = ICONOS_ORGANICOS[metric];
+  if (!icono) return "";
+  const [claro, oscuro, glifo] = icono;
+  return `<i class="kpi-icono" aria-hidden="true" style="--ico-claro:${claro};--ico-oscuro:${oscuro}"><svg viewBox="0 0 24 24">${glifo}</svg></i>`;
 };
+
 
 /* En los indicadores de costo, subir es malo y bajar es bueno: un CPC que sube
    no es una buena noticia aunque el número crezca. Lo mismo con quienes dejan
@@ -609,7 +634,7 @@ function listaKpis() {
 function restablecerKpis(){
   const p=currentPlatform();
   state.kpis[DATOS.tipo]=(p.defaults[state.objective]||p.metrics).slice(0,6);
-  state.selectedMetrics=listaKpis().filter(m=>!SIN_SERIE.has(m)).slice(0,2);
+  state.selectedMetrics=listaKpis().filter(m=>!sinSerie(m)).slice(0,2);
   guardarKpis(); renderKpis(); renderChart();
 }
 function currentMetrics() { return listaKpis(); }
@@ -689,7 +714,7 @@ function setPlatform(id) {
   const p=currentPlatform();
   state.objective="";
   state.selectedCampaigns=new Set();
-  state.selectedMetrics=listaKpis().filter(m=>!SIN_SERIE.has(m)).slice(0,2);
+  state.selectedMetrics=listaKpis().filter(m=>!sinSerie(m)).slice(0,2);
   state.chartTypes[state.selectedMetrics[0]]="bar"; state.chartTypes[state.selectedMetrics[1]]="line";
   state.expandedMetrics=new Set(state.tableMetrics[DATOS.tipo]||[]);
   /* Si la persona dejó una vista abierta en esta cuenta, se abre esa; si no,
@@ -781,8 +806,8 @@ function renderKpis() {
     const delta=deltaFor(metric);
     const signo=delta===null?"":delta>=0?"↑":"↓";
     const clase=claseDeCambio(metric,delta);
-    const estatico=SIN_SERIE.has(metric);
-    return `<button class="kpi-card ${idx>=0?"selected":""} ${estatico?"is-static":""}" draggable="true" ${estatico?`title="Este indicador no tiene serie diaria"`:""} data-metric="${metric}" data-order="${idx>=0?idx+1:""}" style="--series-color:${COLORS[Math.max(0,idx)]}"><span class="kpi-label">${iconoDeMetrica(metric)}${metricLabel(metric)}</span><div class="kpi-value">${fmt(metric,valueFor(metric))}</div>${delta===null?(esNuevo(metric)?`<span class="kpi-delta positive">nuevo vs. comparación</span>`:""):`<span class="kpi-delta ${clase}">${signo} ${Math.abs(delta).toFixed(1).replace(".",",")}% vs. comparación</span>`}${lista.length>1?`<span class="kpi-remove" data-remove="${metric}" title="Quitar esta tarjeta">Quitar</span>`:""}</button>`;
+    const estatico=sinSerie(metric);
+    return `<button class="kpi-card ${idx>=0?"selected":""} ${estatico?"is-static":""} ${iconoDeMetrica(metric)?"con-icono":""}" draggable="true" ${estatico?`title="Este indicador no tiene serie diaria"`:""} data-metric="${metric}" data-order="${idx>=0?idx+1:""}" style="--series-color:${COLORS[Math.max(0,idx)]}">${iconoDeMetrica(metric)}<span class="kpi-label">${metricLabel(metric)}</span><div class="kpi-value">${fmt(metric,valueFor(metric))}</div>${delta===null?(esNuevo(metric)?`<span class="kpi-delta positive">nuevo vs. comparación</span>`:""):`<span class="kpi-delta ${clase}">${signo} ${Math.abs(delta).toFixed(1).replace(".",",")}% vs. comparación</span>`}${lista.length>1?`<span class="kpi-remove" data-remove="${metric}" title="Quitar esta tarjeta">Quitar</span>`:""}</button>`;
   }).join("");
 
   /* El botón de agregar vive en el encabezado, no en la grilla: una casilla
@@ -841,7 +866,7 @@ function quitarKpi(metric, repintar=true){
   state.kpis[DATOS.tipo]=listaKpis().filter(m=>m!==metric);
   state.selectedMetrics=state.selectedMetrics.filter(m=>m!==metric);
   if(!state.selectedMetrics.length){
-    const otro=state.kpis[DATOS.tipo].find(m=>!SIN_SERIE.has(m));
+    const otro=state.kpis[DATOS.tipo].find(m=>!sinSerie(m));
     if(otro) state.selectedMetrics=[otro];
   }
   guardarKpis();
@@ -933,10 +958,10 @@ document.querySelector("#kpi-limpiar").onclick=()=>aplicarAtajoKpi(()=>{
 document.querySelector("#kpi-restablecer").onclick=()=>aplicarAtajoKpi(()=>{
   const p=currentPlatform();
   state.kpis[DATOS.tipo]=(p.defaults[state.objective]||p.metrics).slice(0,6);
-  state.selectedMetrics=state.kpis[DATOS.tipo].filter(m=>!SIN_SERIE.has(m)).slice(0,2);
+  state.selectedMetrics=state.kpis[DATOS.tipo].filter(m=>!sinSerie(m)).slice(0,2);
 });
 
-function toggleChartMetric(metric){ if(SIN_SERIE.has(metric))return; const i=state.selectedMetrics.indexOf(metric); if(i>=0&&state.selectedMetrics.length>1)state.selectedMetrics.splice(i,1); else if(i<0){if(state.selectedMetrics.length===2)state.selectedMetrics.shift();state.selectedMetrics.push(metric);if(!state.chartTypes[metric])state.chartTypes[metric]="line"} renderKpis();renderChart(); }
+function toggleChartMetric(metric){ if(sinSerie(metric))return; const i=state.selectedMetrics.indexOf(metric); if(i>=0&&state.selectedMetrics.length>1)state.selectedMetrics.splice(i,1); else if(i<0){if(state.selectedMetrics.length===2)state.selectedMetrics.shift();state.selectedMetrics.push(metric);if(!state.chartTypes[metric])state.chartTypes[metric]="line"} renderKpis();renderChart(); }
 
 /* La serie sale de las filas por fecha. Con granularidad semanal o mensual se
    agrupan esas mismas filas: nunca se inventa un punto que no vino. */
@@ -957,13 +982,28 @@ function etiquetaDeCubo(clave){
   if(state.granularity==="month") return new Intl.DateTimeFormat("es-AR",{month:"short",year:"numeric"}).format(new Date(`${clave}-01T12:00:00`));
   return new Intl.DateTimeFormat("es-AR",{day:"2-digit",month:"short"}).format(new Date(`${clave}T12:00:00`));
 }
+/* Devuelve los seguidores al cierre de cada tramo, o null si falta el
+   movimiento de algún día y la reconstrucción dejaría de ser fiel. */
+function serieDeSeguidores(cubos){
+  if(!seguidoresReconstruibles()) return null;
+  const netos=cubos.map(c=>c[1].reduce((suma,f)=>{
+    const n=netoDelDia(f);
+    return n===null?NaN:suma+n;
+  },0));
+  if(netos.some(Number.isNaN)) return null;
+  const serie=new Array(cubos.length);
+  let acumulado=num(DATOS.foto.followers_count);
+  for(let i=cubos.length-1;i>=0;i--){ serie[i]=acumulado; acumulado-=netos[i]; }
+  return serie;
+}
+
 function renderChart(){
   /* Si el filtro escondió una tarjeta, su serie tampoco tiene sentido: se
      reemplaza por la primera visible que sí tenga serie diaria. */
   const visibles=kpisVisibles();
   state.selectedMetrics=state.selectedMetrics.filter(m=>visibles.includes(m));
   if(!state.selectedMetrics.length){
-    const otro=visibles.find(m=>!SIN_SERIE.has(m));
+    const otro=visibles.find(m=>!sinSerie(m));
     if(otro) state.selectedMetrics=[otro];
   }
   const metrics=state.selectedMetrics;
@@ -977,7 +1017,10 @@ function renderChart(){
   document.querySelectorAll("[data-chart-type]").forEach(s=>s.onchange=()=>{state.chartTypes[s.dataset.chartType]=s.value;renderChart()});
   document.querySelectorAll("[data-show-values]").forEach(i=>i.onchange=()=>{state.showValues[i.dataset.showValues]=i.checked;renderChart()});
   const cubos=serieAgrupada(); const labels=cubos.map(c=>etiquetaDeCubo(c[0])); const svg=document.querySelector("#evolution-chart"), width=Math.max(700,svg.clientWidth||900), height=280, margin={l:68,r:68,t:22,b:48}, iw=width-margin.l-margin.r, ih=height-margin.t-margin.b;
-  const values=metrics.map(m=>cubos.map(c=>valueFor(m,c[1]))); const max=values.map(v=>Math.max(...v,1)*1.12); /* Cada punto va en el centro de su banda y no repartido de borde a borde:
+  /* La serie de seguidores no se suma: se reconstruye desde la foto de hoy
+     hacia atrás. El resto sale de los totales de cada tramo. */
+  const seguidores=metrics.includes("followers")?serieDeSeguidores(cubos):null;
+  const values=metrics.map(m=>(m==="followers"&&seguidores)?seguidores:cubos.map(c=>valueFor(m,c[1]))); const max=values.map(v=>Math.max(...v,1)*1.12); /* Cada punto va en el centro de su banda y no repartido de borde a borde:
      con pocos puntos las barras quedaban pisando los ejes. */
   const paso=iw/labels.length; const x=i=>margin.l+paso*(i+.5); const y=(v,s)=>margin.t+ih-v/max[s]*ih;
   let html=`<rect class="chart-hit" x="${margin.l}" y="${margin.t}" width="${iw}" height="${ih}"/>`;for(let t=0;t<5;t++){const py=margin.t+ih-t*ih/4;html+=`<line class="chart-grid" x1="${margin.l}" y1="${py}" x2="${width-margin.r}" y2="${py}"/>`;metrics.forEach((m,s)=>{if(s===0||s===1&&metrics.length===2)html+=`<text class="chart-axis chart-y-axis" x="${s===0?margin.l-10:width-margin.r+10}" y="${py+4}" text-anchor="${s===0?"end":"start"}">${fmt(m,max[s]*t/4)}</text>`})}

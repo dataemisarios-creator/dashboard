@@ -603,9 +603,7 @@ td.negative { color: var(--danger); }
 .estado-apagada { background: #b9b2c6; }
 .estado-desconocido { background: transparent; border: 1px solid #b9b2c6; }
 
-/* Icono de cada métrica en las vistas orgánicas. */
-.kpi-label { display: inline-flex; align-items: center; gap: 7px; }
-.kpi-icono svg { width: 15px; height: 15px; fill: none; stroke: var(--violeta-oscuro); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.kpi-label { display: block; }
 
 /* Campo de contraseña con el ojo para ver lo que se escribe. */
 .campo-clave { position: relative; display: block; }
@@ -667,6 +665,20 @@ td.negative { color: var(--danger); }
 .series-control-row .series-values { font-size: 12px; }
 /* Una tarjeta sin serie diaria no se lleva al gráfico: no se comporta como botón. */
 .kpi-card.is-static { cursor: default; }
+/* ── Iconos de las vistas organicas ─────────────────────────────────── */
+.kpi-icono { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px;
+  background: linear-gradient(145deg, var(--ico-claro), var(--ico-oscuro));
+  box-shadow: 0 5px 12px -4px var(--ico-oscuro), inset 0 1px 0 rgba(255,255,255,.55); }
+.kpi-icono svg { width: 20px; height: 20px; fill: #fff; stroke: none; }
+/* Con icono la tarjeta se ordena en dos columnas: la pastilla manda a la
+   izquierda y el texto queda alineado, que es lo que hace legible una grilla
+   de doce. */
+.kpi-card.con-icono { display: grid; grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-areas: "ico etiqueta" "ico valor" "ico cambio"; column-gap: 12px; align-items: center; }
+.kpi-card.con-icono .kpi-icono { grid-area: ico; }
+.kpi-card.con-icono .kpi-label { grid-area: etiqueta; }
+.kpi-card.con-icono .kpi-value { grid-area: valor; margin: 2px 0 0; }
+.kpi-card.con-icono .kpi-delta { grid-area: cambio; }
 /* Solo pantallas medianas: por debajo mandan las reglas de movil. */
 @media (min-width: 701px) and (max-width: 1180px) { .kpi-grid { grid-template-columns: repeat(3, minmax(160px, 1fr)); } }
 /* ── Tarjetas de indicadores: se quitan y se reordenan arrastrando ───── */
@@ -695,3 +707,13 @@ td.negative { color: var(--danger); }
 .estado-pausada { background: #b9b2c6; }
 .estado-eliminada { background: transparent; border: 1.5px solid var(--danger); }
 .extra-table td .estado-punto { margin-right: 8px; }
+
+/* La tarjeta con icono en el teléfono: pastilla, texto y número en una fila.
+   Va al final para ganarle a la definición de escritorio. */
+@media (max-width: 700px) {
+  .kpi-card.con-icono { grid-template-columns: 32px minmax(0, 1fr) auto;
+    grid-template-areas: "ico etiqueta valor" "ico cambio valor"; column-gap: 10px; }
+  .kpi-icono { width: 32px; height: 32px; border-radius: 10px; }
+  .kpi-icono svg { width: 18px; height: 18px; }
+  .kpi-card.con-icono .kpi-value { margin: 0; }
+}
