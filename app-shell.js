@@ -765,20 +765,38 @@ function tablaDePersonas(personas) {
   const filas = personas.map((p) => {
     const valor = p.persona || SIN_RESPONSABLE;
     const elegida = personaDeTareas === valor;
+    const cero = (n) => (n ? n : `<span class="tasks-cero">0</span>`);
     return `<tr class="${elegida ? "es-elegida" : ""}" data-tarea-persona="${valor}">
       <td>${p.persona || `<span class="tasks-sin">sin responsable</span>`}</td>
-      <td>${p.enMarcha}</td>
-      <td>${p.vencidas ? `<span class="tasks-atraso">${p.vencidas}</span>` : "0"}</td>
-      <td>${p.revision}</td>
+      <td>${cero(p.pendiente)}</td>
+      <td>${cero(p.progreso)}</td>
+      <td>${cero(p.revision)}</td>
+      <td><strong>${p.enMarcha}</strong></td>
+      <td>${p.vencidas ? `<span class="tasks-atraso">${p.vencidas}</span>` : `<span class="tasks-cero">0</span>`}</td>
+      <td>${cero(p.bloqueadas)}</td>
     </tr>`;
   }).join("");
   return `<section class="panel">
     <div class="panel-heading"><div><p class="eyebrow">EQUIPO</p><h2>Carga por persona</h2></div></div>
     <div class="table-scroll"><table class="module-table tasks-table tasks-personas">
-      <thead><tr><th>PERSONA</th><th>EN MARCHA</th><th>VENCIDAS</th><th>EN REVISIÓN</th></tr></thead>
+      <thead>
+        <tr>
+          <th rowspan="2">PERSONA</th>
+          <th colspan="4" class="tasks-grupo">EN MARCHA</th>
+          <th rowspan="2">VENCIDAS</th>
+          <th rowspan="2">BLOQUEADAS</th>
+        </tr>
+        <tr>
+          <th>PARA HACER</th><th>EN PROGRESO</th><th>EN REVISIÓN</th><th>TOTAL</th>
+        </tr>
+      </thead>
       <tbody>${filas}</tbody>
     </table></div>
-    <p class="table-help">Clic en una fila para filtrar por esa persona. La carga se cuenta sobre lo que está en marcha: lo entregado no dice cómo está alguien hoy. Una tarea con varios responsables suma para cada uno.</p>
+    <p class="table-help"><b>En marcha</b> es todo lo que está abierto: sin empezar, en progreso o esperando que el PM lo revise.
+      <b>Vencidas</b> son tareas en marcha cuya fecha de entrega ya pasó, así que están contadas también en alguna de las tres columnas de la izquierda.
+      <b>Bloqueadas</b> va aparte porque una tarea frenada no está en marcha. Lo entregado no se cuenta: no dice cómo está alguien hoy.
+      Una tarea con varios responsables suma para cada uno, y por eso la suma de la columna no da el total del tablero.
+      Clic en una fila para filtrar por esa persona.</p>
   </section>`;
 }
 

@@ -579,6 +579,12 @@ td.negative { color: var(--danger); }
 .tasks-personas tbody tr { cursor: pointer; }
 .tasks-personas tbody tr:hover td { background: var(--canvas-strong); }
 .tasks-personas tbody tr.es-elegida td { background: var(--lila-suave, #f1ebff); font-weight: 600; }
+/* «En marcha» agrupa tres columnas: el rótulo tiene que leerse como un techo
+   sobre ellas y no como una columna más. */
+.tasks-personas th.tasks-grupo { text-align: center; border-bottom: 1px solid var(--border); color: var(--violeta-oscuro, #331d75); }
+.tasks-personas thead tr:first-child th { padding-bottom: 6px; }
+.tasks-personas thead tr:last-child th { padding-top: 6px; font-size: 10px; }
+.tasks-cero { color: #c3b8d2; }
 .tasks-leido { font-size: 12px; color: var(--muted-ink); }
 .tasks-vacio { margin: 6px 0 0; color: var(--muted-ink); font-size: 14px; }
 /* El nombre de una tarea puede ser largo y `module-table` no deja cortar

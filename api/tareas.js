@@ -144,15 +144,26 @@ async function leerTablero(idTablero, refrescar = false) {
   const vivas = todas.filter((c) => c.viva);
 
   /* La carga de cada persona se cuenta sobre lo que está en marcha: lo que
-     alguien entregó hace tres meses no dice nada de cómo está hoy. */
+     alguien entregó hace tres meses no dice nada de cómo está hoy. «En marcha»
+     se abre en sus tres estados porque no es lo mismo tener diez cosas sin
+     empezar que diez esperando que alguien las revise. Lo bloqueado va por
+     separado: justamente no está en marcha. */
   const porPersona = new Map();
-  for (const c of vivas) {
+  const fila = (quien) => {
+    if (!porPersona.has(quien))
+      porPersona.set(quien, { persona: quien, pendiente: 0, progreso: 0, revision: 0, enMarcha: 0, vencidas: 0, bloqueadas: 0 });
+    return porPersona.get(quien);
+  };
+  for (const c of todas) {
+    if (!c.viva && c.estado !== 'bloqueada') continue;
     for (const quien of (c.responsables.length ? c.responsables : [null])) {
-      const fila = porPersona.get(quien) || { persona: quien, enMarcha: 0, vencidas: 0, revision: 0 };
-      fila.enMarcha += 1;
-      if (c.vencida) fila.vencidas += 1;
-      if (c.estado === 'revision') fila.revision += 1;
-      porPersona.set(quien, fila);
+      const f = fila(quien);
+      if (c.estado === 'bloqueada') { f.bloqueadas += 1; continue; }
+      f.enMarcha += 1;
+      if (c.estado === 'revision') f.revision += 1;
+      else if (c.estado === 'progreso') f.progreso += 1;
+      else f.pendiente += 1;
+      if (c.vencida) f.vencidas += 1;
     }
   }
 
