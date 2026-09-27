@@ -318,10 +318,12 @@ export async function usuarioDeSesion(sesion) {
    otro lado: no puede dar ni quitar accesos, y eso lo decide `usuarios.js`. */
 const VEN_TODO = new Set(['Administrador', 'PM']);
 
-/* Aprobar y publicar el reporte del mes lo deciden los mismos dos roles: el
-   especialista lo trabaja, ellos lo dan por bueno. */
-export const puedeAprobar = (usuario) =>
+/* Administrador y PM son los dos que miran la agencia entera: dan por bueno el
+   reporte del mes y controlan las tareas del equipo. El especialista trabaja el
+   reporte pero no lo aprueba, y no ve la carga de los demás. */
+export const esGestor = (usuario) =>
   !!usuario && usuario.activo !== false && VEN_TODO.has(usuario.rol);
+export const puedeAprobar = esGestor;
 
 export function permisosDe(usuario) {
   if (!usuario || usuario.activo === false) return new Set();
