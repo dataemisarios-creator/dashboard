@@ -591,6 +591,12 @@ td.negative { color: var(--danger); }
 .tasks-gente { padding-top: 16px; margin-top: 14px; border-top: 1px solid var(--border); }
 .tasks-gente .objective-button { min-height: 32px; padding: 0 12px; font-size: 12px; }
 .tasks-gente .objective-button b { margin-left: 5px; opacity: .65; font-weight: 700; }
+/* El botón del tablero es un enlace, y un enlace llega subrayado: hay que
+   apagarlo para que se vea como los demás botones del panel. */
+.primary-action.con-marca { display: inline-flex; gap: 9px; align-items: center; text-decoration: none; }
+.primary-action.con-marca:hover { text-decoration: none; }
+.marca-trello { display: inline-grid; place-items: center; width: 18px; height: 18px; }
+.marca-trello svg { width: 100%; height: 100%; display: block; border-radius: 4px; }
 .tasks-leido { font-size: 12px; color: var(--muted-ink); }
 .tasks-vacio { margin: 6px 0 0; color: var(--muted-ink); font-size: 14px; }
 /* El nombre de una tarea puede ser largo y `module-table` no deja cortar
