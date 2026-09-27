@@ -565,6 +565,20 @@ td.negative { color: var(--danger); }
 .tasks-card.es-alerta { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
 .tasks-card.es-alerta .kpi-value { color: var(--danger); }
 .tasks-card.es-aviso .kpi-value { color: #b3701a; }
+/* El cuadro elegido se marca con el violeta de marca. Se le quita el número en
+   la esquina que usan las tarjetas del gráfico: acá no hay series, hay un
+   filtro, y ese globo diría algo que no es. */
+.tasks-card { cursor: pointer; text-align: left; font: inherit; }
+.tasks-card.selected::after { content: none; }
+.tasks-card.selected { border-color: var(--violeta); box-shadow: 0 0 0 1px var(--violeta) inset; }
+.tasks-filtro { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted-ink); }
+.tasks-filtro select {
+  min-height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 999px;
+  background: #fff; color: var(--ink); font: inherit; font-size: 12px;
+}
+.tasks-personas tbody tr { cursor: pointer; }
+.tasks-personas tbody tr:hover td { background: var(--canvas-strong); }
+.tasks-personas tbody tr.es-elegida td { background: var(--lila-suave, #f1ebff); font-weight: 600; }
 .tasks-leido { font-size: 12px; color: var(--muted-ink); }
 .tasks-vacio { margin: 6px 0 0; color: var(--muted-ink); font-size: 14px; }
 /* El nombre de una tarea puede ser largo y `module-table` no deja cortar

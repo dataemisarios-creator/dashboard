@@ -587,15 +587,28 @@ async function cambiarPublicacion(i, boton) {
    /api/tareas, que tiene la credencial y decide quién puede mirar. */
 
 let pedidoDeTareas = 0;
+let tareasCargadas = null;
+let filtroDeTareas = "vencidas";
+let personaDeTareas = "";
 
+/* Los seis cuadros son el filtro, no un adorno: cada uno elige qué se lista
+   abajo. Antes parecían botones —se movían al pasar el mouse— y no hacían
+   nada, y las tarjetas sin fecha no se veían en ninguna parte. */
 const CUADROS_TAREAS = [
-  { clave: "vencidas", etiqueta: "Vencidas", tono: "alerta" },
-  { clave: "vencenHoy", etiqueta: "Vencen hoy", tono: "aviso" },
-  { clave: "esperandoRevision", etiqueta: "Esperando revisión", tono: "" },
-  { clave: "bloqueadas", etiqueta: "Bloqueadas", tono: "" },
-  { clave: "enMarcha", etiqueta: "En marcha", tono: "" },
-  { clave: "sinFecha", etiqueta: "Sin fecha", tono: "" },
+  { clave: "vencidas", etiqueta: "Vencidas", titulo: "Tareas vencidas", rotulo: "ATRASO", tono: "alerta",
+    vacio: "Nada vencido. El tablero está al día.", prueba: (c) => c.vencida },
+  { clave: "vencenHoy", etiqueta: "Vencen hoy", titulo: "Vencen hoy", rotulo: "HOY", tono: "aviso",
+    vacio: "No vence nada hoy.", prueba: (c) => c.venceHoy },
+  { clave: "esperandoRevision", etiqueta: "Esperando revisión", titulo: "Esperando revisión", rotulo: "TU COLA", tono: "",
+    vacio: "No hay nada esperando revisión.", prueba: (c) => c.estado === "revision" },
+  { clave: "bloqueadas", etiqueta: "Bloqueadas", titulo: "Bloqueadas y en espera", rotulo: "TRABADAS", tono: "",
+    vacio: "No hay nada bloqueado.", prueba: (c) => c.estado === "bloqueada" },
+  { clave: "enMarcha", etiqueta: "En marcha", titulo: "Todo lo que está en marcha", rotulo: "ACTIVO", tono: "",
+    vacio: "No hay tareas en marcha.", prueba: (c) => c.viva },
+  { clave: "sinFecha", etiqueta: "Sin fecha", titulo: "En marcha y sin fecha de entrega", rotulo: "SIN PLAZO", tono: "",
+    vacio: "Todas las tareas en marcha tienen fecha.", prueba: (c) => c.viva && !c.vence },
 ];
+const cuadroActivo = () => CUADROS_TAREAS.find((c) => c.clave === filtroDeTareas) || CUADROS_TAREAS[0];
 
 const diaCorto = (iso) => {
   const d = new Date(iso);
@@ -615,9 +628,14 @@ function atraso(iso) {
   return meses === 1 ? "1 mes" : `${meses} meses`;
 }
 
+const SIN_RESPONSABLE = "__sin__";
+const deLaPersona = (c) => !personaDeTareas
+  || (personaDeTareas === SIN_RESPONSABLE ? !c.responsables.length : c.responsables.includes(personaDeTareas));
+
 async function pintarTareas() {
   const pedido = (pedidoDeTareas += 1);
   if (!clienteActual) return;
+  tareasCargadas = null;
   $("#tasks-eyebrow").textContent = clienteActual.nombre.toUpperCase();
   $("#tasks-kpis").innerHTML = `<p class="tasks-vacio">Consultando Trello…</p>`;
   $("#tasks-panels").innerHTML = "";
@@ -640,38 +658,78 @@ async function pintarTareas() {
     return;
   }
 
+  tareasCargadas = datos;
+  /* Al cambiar de cliente, un responsable del tablero anterior no existe acá. */
+  if (personaDeTareas && personaDeTareas !== SIN_RESPONSABLE
+      && !datos.personas.some((p) => p.persona === personaDeTareas)) personaDeTareas = "";
+
   $("#tasks-title").textContent = datos.tablero.nombre;
   $("#tasks-leido").textContent = `Leído a las ${horaCorta(datos.leido)}`;
   const enlace = $("#tasks-board");
   enlace.hidden = false;
   enlace.href = datos.tablero.url;
 
-  const r = datos.resumen;
-  $("#tasks-kpis").innerHTML = CUADROS_TAREAS.map((c) => {
-    const valor = r[c.clave] || 0;
-    const tono = valor && c.tono ? ` es-${c.tono}` : "";
-    return `<div class="kpi-card tasks-card${tono}">
-      <span class="kpi-label">${c.etiqueta}</span>
-      <strong class="kpi-value">${valor}</strong>
-    </div>`;
-  }).join("");
-
-  const vencidas = datos.tarjetas.filter((c) => c.vencida)
-    .sort((a, b) => new Date(a.vence) - new Date(b.vence));
-  const revision = datos.tarjetas.filter((c) => c.estado === "revision");
-  const bloqueadas = datos.tarjetas.filter((c) => c.estado === "bloqueada");
-
-  $("#tasks-panels").innerHTML = [
-    tablaDeTareas("ATRASO", "Tareas vencidas", vencidas, "Nada vencido. El tablero está al día.", true),
-    tablaDeTareas("TU COLA", "Esperando revisión", revision, "No hay nada esperando revisión."),
-    tablaDeTareas("TRABADAS", "Bloqueadas y en espera", bloqueadas, "No hay nada bloqueado."),
-    tablaDePersonas(datos.personas),
-  ].join("");
+  dibujarTareas();
 }
 
-function tablaDeTareas(rotulo, titulo, tarjetas, vacio, conAtraso = false) {
+function dibujarTareas() {
+  if (!tareasCargadas) return;
+  const propias = tareasCargadas.tarjetas.filter(deLaPersona);
+
+  /* Las cifras se recalculan con el responsable elegido: la pregunta de un PM
+     no es «cuántas hay vencidas» sino «cuántas tiene vencidas Melisa». */
+  $("#tasks-kpis").innerHTML = CUADROS_TAREAS.map((c) => {
+    const valor = propias.filter(c.prueba).length;
+    const clases = ["kpi-card", "tasks-card"];
+    if (valor && c.tono) clases.push(`es-${c.tono}`);
+    if (c.clave === filtroDeTareas) clases.push("selected");
+    return `<button class="${clases.join(" ")}" type="button" data-tarea-filtro="${c.clave}">
+      <span class="kpi-label">${c.etiqueta}</span>
+      <strong class="kpi-value">${valor}</strong>
+    </button>`;
+  }).join("");
+  $$("[data-tarea-filtro]").forEach((b) => (b.onclick = () => {
+    filtroDeTareas = b.dataset.tareaFiltro;
+    dibujarTareas();
+  }));
+
+  const cuadro = cuadroActivo();
+  $("#tasks-panels").innerHTML = tablaDeTareas(cuadro, propias.filter(cuadro.prueba))
+    + tablaDePersonas(tareasCargadas.personas);
+
+  const selector = $("#tasks-persona");
+  if (selector) {
+    selector.value = personaDeTareas;
+    selector.onchange = () => { personaDeTareas = selector.value; dibujarTareas(); };
+  }
+  $$("[data-tarea-persona]").forEach((b) => (b.onclick = () => {
+    personaDeTareas = personaDeTareas === b.dataset.tareaPersona ? "" : b.dataset.tareaPersona;
+    dibujarTareas();
+  }));
+}
+
+function selectorDePersonas() {
+  const personas = tareasCargadas.personas;
+  const opciones = personas.map((p) => {
+    const valor = p.persona || SIN_RESPONSABLE;
+    const nombre = p.persona || "Sin responsable";
+    return `<option value="${valor}">${nombre} (${p.enMarcha})</option>`;
+  }).join("");
+  return `<label class="tasks-filtro"><span>Responsable</span>
+    <select id="tasks-persona"><option value="">Todo el equipo</option>${opciones}</select>
+  </label>`;
+}
+
+function tablaDeTareas(cuadro, tarjetas) {
+  const conAtraso = cuadro.clave === "vencidas";
+  const conFecha = cuadro.clave !== "sinFecha";
+  const cabecera = `<div class="panel-heading">
+      <div><p class="eyebrow">${cuadro.rotulo}</p><h2>${cuadro.titulo}</h2></div>
+      ${selectorDePersonas()}
+    </div>`;
+
   if (!tarjetas.length)
-    return `<section class="panel"><div class="panel-heading"><div><p class="eyebrow">${rotulo}</p><h2>${titulo}</h2></div></div><p class="tasks-vacio">${vacio}</p></section>`;
+    return `<section class="panel">${cabecera}<p class="tasks-vacio">${cuadro.vacio}</p></section>`;
 
   const filas = tarjetas.map((c) => {
     const avance = c.checklist ? `<span class="tasks-checklist">${c.checklist.hechos}/${c.checklist.total}</span>` : "";
@@ -682,35 +740,39 @@ function tablaDeTareas(rotulo, titulo, tarjetas, vacio, conAtraso = false) {
       <td><a class="tasks-link" href="${c.url}" target="_blank" rel="noopener">${c.nombre}</a>${avance}</td>
       <td>${c.lista}</td>
       <td>${quienes}</td>
-      <td>${c.vence ? diaCorto(c.vence) : "—"}</td>
+      ${conFecha ? `<td>${c.vence ? diaCorto(c.vence) : "—"}</td>` : `<td>${diaCorto(c.ultimoMovimiento)}</td>`}
       ${conAtraso ? `<td><span class="tasks-atraso">${atraso(c.vence)}</span></td>` : ""}
     </tr>`;
   }).join("");
 
-  return `<section class="panel">
-    <div class="panel-heading"><div><p class="eyebrow">${rotulo}</p><h2>${titulo}</h2></div><span class="tasks-leido">${tarjetas.length}</span></div>
+  return `<section class="panel">${cabecera}
     <div class="table-scroll"><table class="module-table tasks-table">
-      <thead><tr><th>TAREA</th><th>LISTA</th><th>RESPONSABLE</th><th>VENCE</th>${conAtraso ? "<th>ATRASO</th>" : ""}</tr></thead>
+      <thead><tr><th>TAREA</th><th>LISTA</th><th>RESPONSABLE</th><th>${conFecha ? "VENCE" : "ÚLTIMO MOVIMIENTO"}</th>${conAtraso ? "<th>ATRASO</th>" : ""}</tr></thead>
       <tbody>${filas}</tbody>
     </table></div>
+    <p class="table-help">${tarjetas.length} ${tarjetas.length === 1 ? "tarea" : "tareas"}${personaDeTareas ? " con el responsable elegido" : ""}. El nombre abre la tarjeta en Trello.</p>
   </section>`;
 }
 
 function tablaDePersonas(personas) {
   if (!personas.length) return "";
-  const filas = personas.map((p) => `<tr>
-    <td>${p.persona || `<span class="tasks-sin">sin responsable</span>`}</td>
-    <td>${p.enMarcha}</td>
-    <td>${p.vencidas ? `<span class="tasks-atraso">${p.vencidas}</span>` : "0"}</td>
-    <td>${p.revision}</td>
-  </tr>`).join("");
+  const filas = personas.map((p) => {
+    const valor = p.persona || SIN_RESPONSABLE;
+    const elegida = personaDeTareas === valor;
+    return `<tr class="${elegida ? "es-elegida" : ""}" data-tarea-persona="${valor}">
+      <td>${p.persona || `<span class="tasks-sin">sin responsable</span>`}</td>
+      <td>${p.enMarcha}</td>
+      <td>${p.vencidas ? `<span class="tasks-atraso">${p.vencidas}</span>` : "0"}</td>
+      <td>${p.revision}</td>
+    </tr>`;
+  }).join("");
   return `<section class="panel">
     <div class="panel-heading"><div><p class="eyebrow">EQUIPO</p><h2>Carga por persona</h2></div></div>
-    <div class="table-scroll"><table class="module-table tasks-table">
+    <div class="table-scroll"><table class="module-table tasks-table tasks-personas">
       <thead><tr><th>PERSONA</th><th>EN MARCHA</th><th>VENCIDAS</th><th>EN REVISIÓN</th></tr></thead>
       <tbody>${filas}</tbody>
     </table></div>
-    <p class="table-help">La carga se cuenta sobre lo que está en marcha: lo entregado no dice cómo está alguien hoy. Una tarea con varios responsables suma para cada uno.</p>
+    <p class="table-help">Clic en una fila para filtrar por esa persona. La carga se cuenta sobre lo que está en marcha: lo entregado no dice cómo está alguien hoy. Una tarea con varios responsables suma para cada uno.</p>
   </section>`;
 }
 
