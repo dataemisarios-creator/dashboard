@@ -567,7 +567,10 @@ td.negative { color: var(--danger); }
 .tasks-card.es-aviso .kpi-value { color: #b3701a; }
 .tasks-leido { font-size: 12px; color: var(--muted-ink); }
 .tasks-vacio { margin: 6px 0 0; color: var(--muted-ink); font-size: 14px; }
-.tasks-table td:first-child { max-width: 420px; }
+/* El nombre de una tarea puede ser largo y `module-table` no deja cortar
+   línea, así que se montaba sobre la columna de al lado. Acá sí se parte. */
+.tasks-table th:first-child, .tasks-table td:first-child { max-width: 400px; white-space: normal; }
+.tasks-table th:nth-child(3), .tasks-table td:nth-child(3) { max-width: 260px; white-space: normal; text-align: right; }
 .tasks-link { color: var(--ink); text-decoration: none; font-weight: 600; }
 .tasks-link:hover { color: var(--purple); text-decoration: underline; }
 .tasks-checklist {
