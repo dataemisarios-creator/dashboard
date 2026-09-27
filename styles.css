@@ -223,7 +223,11 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 /* Secciones de gestión */
 .view[hidden] { display: none; }
 .report-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 14px; }
-.report-card { display: grid; gap: 4px; padding: 16px; text-align: left; border: 1px solid var(--border); border-radius: 14px; background: #fff; color: var(--ink); }
+.report-card { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; align-items: center; padding: 14px 16px; text-align: left; border: 1px solid var(--border); border-radius: 14px; background: #fff; color: var(--ink); }
+.report-card span { display: grid; gap: 3px; }
+.report-card .marca { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: var(--canvas); }
+.report-card .marca svg { width: 23px; height: 23px; }
+.report-card:hover { border-color: var(--violeta); }
 .report-card strong { font-size: 15px; }
 .report-card small { color: var(--muted-ink); }
 

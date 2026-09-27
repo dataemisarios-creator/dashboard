@@ -379,12 +379,46 @@ function pintarReportes() {
   pintarMeses();
 }
 
+/* Marcas de cada plataforma, planas y con su color, para reconocer la tarjeta
+   de un vistazo. Son versiones simplificadas, no los logotipos oficiales: acá
+   cumplen la función de identificar la cuenta, no la de representar la marca.
+   El degradado de Instagram necesita un id propio por tarjeta, porque un
+   cliente puede tener dos perfiles y los ids repetidos se pisan. */
+const MARCAS = {
+  google: () => `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9.4 2.6 3.1 13.5a3.1 3.1 0 0 0 5.4 3.1L14.8 5.7A3.1 3.1 0 0 0 9.4 2.6Z" fill="#FBBC04"/>
+      <path d="M14.6 2.6a3.1 3.1 0 0 0-1.1 4.2l5.4 9.4a3.1 3.1 0 0 0 5.4-3.1L18.8 3.7a3.1 3.1 0 0 0-4.2-1.1Z" fill="#4285F4" transform="translate(-3.6)"/>
+      <circle cx="6" cy="18.4" r="3.1" fill="#34A853"/>
+    </svg>`,
+  meta: () => `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2.4 14.1c0-3.9 1.9-8 4.6-8 1.6 0 2.8 1 4.3 3.3l1.3 2 1.5-2.4C15.7 6.5 17 6.1 18.2 6.1c2.8 0 4.4 3.5 4.4 7.4 0 2.6-1.2 4.4-3.3 4.4-1.8 0-2.8-1-4.3-3.5l-1.3-2.2-1.6 2.7c-1.4 2.3-2.6 3-4.2 3-2.1 0-3.5-1.7-3.5-3.8Zm3.3-.3c0 1.2.5 1.9 1.3 1.9.7 0 1.2-.4 2.1-1.8l1.4-2.3-1.2-1.9C8.3 8 7.7 7.6 7 7.6c-1.2 0-2.3 2.3-2.3 5 0 .4 0 .8.1 1.2Zm10.2-1.4 1.3 2.2c.9 1.4 1.4 1.8 2.1 1.8.8 0 1.2-.7 1.2-1.9 0-3-1.1-5.3-2.5-5.3-.7 0-1.3.4-2.2 1.9z" fill="#0081FB"/>
+    </svg>`,
+  tiktok: () => `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M13 2.5h2.9c.4 2.3 1.9 3.9 4.4 4.2v2.9c-1.6 0-3-.5-4.3-1.4v6.2a5.9 5.9 0 1 1-5.1-5.9v3a2.9 2.9 0 1 0 2.1 2.8Z" fill="#25F4EE" transform="translate(-1.3 -.6)"/>
+      <path d="M13 2.5h2.9c.4 2.3 1.9 3.9 4.4 4.2v2.9c-1.6 0-3-.5-4.3-1.4v6.2a5.9 5.9 0 1 1-5.1-5.9v3a2.9 2.9 0 1 0 2.1 2.8Z" fill="#FE2C55" transform="translate(1.3 .6)"/>
+      <path d="M13 2.5h2.9c.4 2.3 1.9 3.9 4.4 4.2v2.9c-1.6 0-3-.5-4.3-1.4v6.2a5.9 5.9 0 1 1-5.1-5.9v3a2.9 2.9 0 1 0 2.1 2.8Z" fill="#161616"/>
+    </svg>`,
+  instagram: (id) => `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <defs><linearGradient id="ig-${id}" x1="0" y1="1" x2="1" y2="0">
+        <stop offset="0" stop-color="#FFC947"/><stop offset=".35" stop-color="#FF5B4D"/>
+        <stop offset=".7" stop-color="#E1306C"/><stop offset="1" stop-color="#8A3AB9"/>
+      </linearGradient></defs>
+      <rect x="2.2" y="2.2" width="19.6" height="19.6" rx="5.6" fill="url(#ig-${id})"/>
+      <circle cx="12" cy="12" r="4.4" fill="none" stroke="#fff" stroke-width="1.9"/>
+      <circle cx="17.4" cy="6.7" r="1.25" fill="#fff"/>
+    </svg>`,
+};
+const marcaDe = (cuenta) => {
+  const dibujo = MARCAS[cuenta.tipo];
+  return dibujo ? `<i class="marca" aria-hidden="true">${dibujo(cuenta.id)}</i>` : "";
+};
+
 /* Una tarjeta por cuenta conectada de este cliente, más el PDF con todas. */
 function pintarReportesRapidos() {
   const cuentas = clienteActual ? clienteActual.cuentas : [];
   $("#report-grid").innerHTML = cuentas.map((c) =>
-    `<button class="report-card" type="button" data-report="${c.id}"><strong>${c.titulo}</strong><small>PDF de la vista con los filtros aplicados</small></button>`).join("") +
-    `<button class="report-card" type="button" data-report="__todo"><strong>Todas las cuentas</strong><small>Un PDF con las ${cuentas.length} vistas</small></button>`;
+    `<button class="report-card" type="button" data-report="${c.id}">${marcaDe(c)}<span><strong>${c.titulo}</strong><small>PDF de la vista con los filtros aplicados</small></span></button>`).join("") +
+    `<button class="report-card todas" type="button" data-report="__todo"><i class="marca" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3.4h8.6L20 8.8v11.8a1.2 1.2 0 0 1-1.2 1.2H6a1.2 1.2 0 0 1-1.2-1.2V4.6A1.2 1.2 0 0 1 6 3.4Z" fill="#7b4de0"/><path d="M14.6 3.4 20 8.8h-4.2a1.2 1.2 0 0 1-1.2-1.2Z" fill="#c0a5ff"/><path d="M7.8 12.4h8.4v1.6H7.8zM7.8 15.8h8.4v1.6H7.8z" fill="#fff"/></svg></i><span><strong>Todas las cuentas</strong><small>Un PDF con las ${cuentas.length} vistas</small></span></button>`;
   $$("[data-report]").forEach((b) => (b.onclick = () => {
     if (b.dataset.report === "__todo") { $("#export-all").click(); return; }
     setPlatform(b.dataset.report);
