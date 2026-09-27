@@ -293,6 +293,11 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   .paginado-botones, .series-control select, .series-values, .metric-toggle,
   .texto-escala, .estados-extra, .campaign-states { display: none !important; }
 
+  /* La cortina de carga es un panel fijo sobre toda la pantalla: si llegara a
+     estar visible al imprimir, se dibuja atravesada sobre la primera hoja y
+     además la deja lavada. Nunca va al papel, pase lo que pase. */
+  .cargando { display: none !important; }
+
   .app-shell { display: block; }
   /* El fondo de la página se conserva: es parte de cómo se ve el panel. */
   .dashboard { padding: 0; background: radial-gradient(circle at 70% 4%, #eadfff 0, transparent 30%), var(--canvas); }

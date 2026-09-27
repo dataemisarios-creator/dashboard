@@ -294,9 +294,14 @@ function cabeceraImpresion(titulo, detalle) {
   $("#print-header").innerHTML = `<strong>${titulo}</strong>Emisarios Argentina · Geely Argentina · ${detalle}`;
 }
 
-$("#export-view").onclick = () => {
-  cabeceraImpresion(currentPlatform().title, resumenFiltros());
+$("#export-view").onclick = async () => {
   aviso("Preparando el PDF de la vista actual…");
+  /* La cortina de carga es un panel fijo que tapa la pantalla: si la consulta
+     sigue en curso cuando se abre el diálogo de impresión, sale impresa encima
+     de la primera hoja. Se espera a que los datos estén. */
+  if (window.DatosEmisarios && !(await window.DatosEmisarios.listo()))
+    aviso("Los datos tardaron más de lo normal: el PDF puede salir incompleto.");
+  cabeceraImpresion(currentPlatform().title, resumenFiltros());
   setTimeout(() => window.print(), 250);
 };
 
@@ -430,7 +435,9 @@ function pintarReportesRapidos() {
     setPlatform(b.dataset.report);
     mostrarVista("dashboard");
     filtrosAplicados();
-    setTimeout(() => $("#export-view").click(), 150);
+    /* Lo justo para que la consulta arranque; de esperar a que termine se
+       encarga el propio botón de descarga. */
+    setTimeout(() => $("#export-view").click(), 400);
   }));
 }
 

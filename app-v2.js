@@ -1854,6 +1854,18 @@ aplicarRapido("thisMonth");
 window.onresize=()=>{clearTimeout(window.chartTimer);window.chartTimer=setTimeout(renderChart,100)};
 window.DatosEmisarios = {
   cargar: cargarDatos,
+  /* Imprimir con la consulta en curso deja la cortina de carga atravesada en
+     la primera hoja del PDF. Quien va a imprimir espera acá a que los datos
+     estén; el tope es para no quedarse colgado si Windsor no responde. */
+  listo: (tope = 25000) => new Promise((resolver) => {
+    if (!DATOS.cargando) { resolver(true); return; }
+    const desde = Date.now();
+    const reloj = setInterval(() => {
+      if (DATOS.cargando && Date.now() - desde < tope) return;
+      clearInterval(reloj);
+      resolver(!DATOS.cargando);
+    }, 120);
+  }),
   /* Volver a pedir sólo cuando cambió el período o la comparación; si sólo se
      tocaron campañas u objetivos alcanza con repintar lo que ya está. */
   aplicarFiltros: () => {
