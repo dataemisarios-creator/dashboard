@@ -604,7 +604,9 @@ td.negative { color: var(--danger); }
 
 /* Estado vacío ilustrado: se usa cuando no hay tablero o cuando la consulta
    falla. Ocupa el ancho del panel y se centra, como una página de error. */
-.estado-roto { display: grid; justify-items: center; gap: 4px; padding: 26px 16px 8px; text-align: center; }
+/* Vive dentro de la grilla de los cuadros de estado, así que sin esto queda
+   encerrado en una de las siete columnas. */
+.estado-roto { grid-column: 1 / -1; display: grid; justify-items: center; gap: 4px; padding: 26px 16px 8px; text-align: center; }
 .perro-roto { width: min(240px, 70%); height: auto; margin-bottom: 6px; }
 .estado-roto-titulo { margin: 0; font-size: 19px; font-weight: 700; color: var(--ink); letter-spacing: -.01em; }
 .estado-roto-texto { margin: 0; max-width: 460px; color: var(--muted-ink); font-size: 14px; }
