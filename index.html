@@ -258,7 +258,11 @@
           <section class="panel chart-panel" aria-labelledby="chart-title">
             <div class="panel-heading">
               <div><p class="eyebrow">EVOLUCIÓN</p><h2 id="chart-title">Evolución de Leads vs. CPL</h2></div>
-              <button type="button" class="ampliar" id="ampliar-evolucion">Ampliar</button><div class="granularity" role="group" aria-label="Agrupación temporal">
+              <span class="texto-escala" id="escala-evolucion">Tamaño del texto
+                <button data-escala-grafico="-" type="button" aria-label="Reducir el texto">−</button>
+                <b id="escala-evolucion-pct">100%</b>
+                <button data-escala-grafico="+" type="button" aria-label="Agrandar el texto">+</button>
+              </span><button type="button" class="ampliar" id="ampliar-evolucion">Ampliar</button><div class="granularity" role="group" aria-label="Agrupación temporal">
                 <button type="button" class="active" data-granularity="day">Días</button>
                 <button type="button" data-granularity="week">Semanas</button>
                 <button type="button" data-granularity="month">Meses</button>

@@ -83,7 +83,9 @@ const state = {
   kpis: {},
   networks: new Set(["instagram","facebook"]),
   tableMetrics: { meta: ["spend","conversions","cpa"], google: ["spend","clicks","conversions"], tiktok: ["spend","videoViews","cpv"], instagram: ["reach","interactions","shares"], tiktokOrganic: ["reach","interactions","shares"] },
-  expandedMetrics: new Set(["spend","conversions","cpa"]), expandedRows: new Set(["row-0","row-0-adset"]), showValues: {}
+  expandedMetrics: new Set(["spend","conversions","cpa"]), expandedRows: new Set(["row-0","row-0-adset"]), showValues: {},
+  /* Tamaño del texto del gráfico principal. 1 es el de siempre. */
+  escalaGrafico: 1.2
 };
 
 /* ── Datos reales de Windsor ─────────────────────────────────────────────
@@ -1016,15 +1018,22 @@ function renderChart(){
   document.querySelector("#series-controls").innerHTML=metrics.map((m,i)=>`<label class="series-control" style="--series-color:${COLORS[i]}"><i></i><strong>${metricLabel(m)}</strong><select data-chart-type="${m}"><option value="line" ${state.chartTypes[m]==="line"?"selected":""}>Línea</option><option value="bar" ${state.chartTypes[m]==="bar"?"selected":""}>Barras</option></select><span class="series-values"><input type="checkbox" data-show-values="${m}" ${state.showValues[m]?"checked":""}> Mostrar datos</span></label>`).join("");
   document.querySelectorAll("[data-chart-type]").forEach(s=>s.onchange=()=>{state.chartTypes[s.dataset.chartType]=s.value;renderChart()});
   document.querySelectorAll("[data-show-values]").forEach(i=>i.onchange=()=>{state.showValues[i.dataset.showValues]=i.checked;renderChart()});
-  const cubos=serieAgrupada(); const labels=cubos.map(c=>etiquetaDeCubo(c[0])); const svg=document.querySelector("#evolution-chart"), width=Math.max(700,svg.clientWidth||900), height=280, margin={l:68,r:68,t:22,b:48}, iw=width-margin.l-margin.r, ih=height-margin.t-margin.b;
+  const cubos=serieAgrupada(); const labels=cubos.map(c=>etiquetaDeCubo(c[0]));
+  /* Todo lo que ocupa texto crece con la escala: la tipografía y los márgenes
+     que la alojan. Con 1 queda igual que siempre. */
+  const esc=state.escalaGrafico||1, fs=11*esc, fsY=10*esc, fsVal=10*esc;
+  const svg=document.querySelector("#evolution-chart"), width=Math.max(700,svg.clientWidth||900),
+    margin={l:48+20*esc,r:48+20*esc,t:22,b:26+22*esc}, height=Math.round(margin.t+210+margin.b),
+    iw=width-margin.l-margin.r, ih=height-margin.t-margin.b;
   /* La serie de seguidores no se suma: se reconstruye desde la foto de hoy
      hacia atrás. El resto sale de los totales de cada tramo. */
   const seguidores=metrics.includes("followers")?serieDeSeguidores(cubos):null;
   const values=metrics.map(m=>(m==="followers"&&seguidores)?seguidores:cubos.map(c=>valueFor(m,c[1]))); const max=values.map(v=>Math.max(...v,1)*1.12); /* Cada punto va en el centro de su banda y no repartido de borde a borde:
      con pocos puntos las barras quedaban pisando los ejes. */
   const paso=iw/labels.length; const x=i=>margin.l+paso*(i+.5); const y=(v,s)=>margin.t+ih-v/max[s]*ih;
-  let html=`<rect class="chart-hit" x="${margin.l}" y="${margin.t}" width="${iw}" height="${ih}"/>`;for(let t=0;t<5;t++){const py=margin.t+ih-t*ih/4;html+=`<line class="chart-grid" x1="${margin.l}" y1="${py}" x2="${width-margin.r}" y2="${py}"/>`;metrics.forEach((m,s)=>{if(s===0||s===1&&metrics.length===2)html+=`<text class="chart-axis chart-y-axis" x="${s===0?margin.l-10:width-margin.r+10}" y="${py+4}" text-anchor="${s===0?"end":"start"}">${fmt(m,max[s]*t/4)}</text>`})}
-  const step=Math.max(1,Math.ceil(labels.length/8));labels.forEach((l,i)=>{if(i%step===0||i===labels.length-1)html+=`<text class="chart-axis" x="${x(i)}" y="${height-17}" text-anchor="middle">${l}</text>`});
+  let html=`<rect class="chart-hit" x="${margin.l}" y="${margin.t}" width="${iw}" height="${ih}"/>`;for(let t=0;t<5;t++){const py=margin.t+ih-t*ih/4;html+=`<line class="chart-grid" x1="${margin.l}" y1="${py}" x2="${width-margin.r}" y2="${py}"/>`;metrics.forEach((m,s)=>{if(s===0||s===1&&metrics.length===2)html+=`<text class="chart-axis chart-y-axis" style="font-size:${fsY}px" x="${s===0?margin.l-10:width-margin.r+10}" y="${py+fsY*0.36}" text-anchor="${s===0?"end":"start"}">${fmt(m,max[s]*t/4)}</text>`})}
+  /* Con la letra más grande entran menos fechas sin encimarse. */
+  const step=Math.max(1,Math.ceil(labels.length/Math.max(3,Math.round(8/esc))));labels.forEach((l,i)=>{if(i%step===0||i===labels.length-1)html+=`<text class="chart-axis" style="font-size:${fs}px" x="${x(i)}" y="${height-margin.b+fs+6}" text-anchor="middle">${l}</text>`});
   const cuantasBarras=metrics.filter(m=>state.chartTypes[m]==="bar").length;
   let puestaBarra=0;
   metrics.forEach((m,s)=>{if(state.chartTypes[m]==="bar"){const bw=Math.max(8,Math.min(30,paso*.62/cuantasBarras));const desplazada=puestaBarra++;values[s].forEach((v,i)=>html+=`<rect class="chart-bar" x="${x(i)-bw*cuantasBarras/2+bw*desplazada}" y="${y(v,s)}" width="${bw}" height="${margin.t+ih-y(v,s)}" rx="3" fill="${COLORS[s]}"/>`)}else{html+=`<path class="chart-line" d="${values[s].map((v,i)=>`${i?"L":"M"}${x(i)},${y(v,s)}`).join(" ")}" stroke="${COLORS[s]}"/>`;values[s].forEach((v,i)=>html+=`<circle class="chart-point" cx="${x(i)}" cy="${y(v,s)}" r="4" fill="${COLORS[s]}"/>`)}});
@@ -1034,7 +1043,14 @@ function renderChart(){
   metrics.forEach((m,s)=>{ const esBarra=state.chartTypes[m]==="bar"; const bw=Math.max(8,Math.min(30,paso*.62/Math.max(1,cuantasBarras))); const desplazada=esBarra?puestaValor++:0;
     if(!state.showValues[m])return;
     values[s].forEach((v,i)=>{ const px=esBarra?x(i)-bw*cuantasBarras/2+bw*desplazada+bw/2:x(i); const py=y(v,s)-(esBarra?6:10);
-      html+=`<text class="chart-value" x="${px}" y="${py}" text-anchor="middle" fill="${COLORS[s]}">${fmt(m,v)}</text>`; }); });
+      html+=`<text class="chart-value" style="font-size:${fsVal}px" x="${px}" y="${py}" text-anchor="middle" fill="${COLORS[s]}">${fmt(m,v)}</text>`; }); });
+  const pct=document.querySelector("#escala-evolucion-pct");
+  if(pct){
+    pct.textContent=`${Math.round(esc*100)}%`;
+    const i=ESCALAS_TEXTO.indexOf(esc);
+    document.querySelector('[data-escala-grafico="-"]').disabled=i<=0;
+    document.querySelector('[data-escala-grafico="+"]').disabled=i>=ESCALAS_TEXTO.length-1;
+  }
   svg.setAttribute("viewBox",`0 0 ${width} ${height}`);svg.innerHTML=html;
   const tooltip=document.querySelector("#chart-tooltip");
   svg.onpointermove=e=>{
@@ -1191,7 +1207,7 @@ const ESCALAS_TEXTO = [0.85, 1, 1.2, 1.45, 1.75, 2.1];
 const ESTADOS_EXTRA=[["todas","Todas"],["activa","Habilitadas"],["pausada","En pausa"],["eliminada","Eliminadas"]];
 const estadoExtra = {};
 function ajustesDe(id) {
-  if (!estadoExtra[id]) estadoExtra[id] = { orden: "spend", desc: true, porPagina: 10, pagina: 1, m1: "clicks", m2: "conversions", valores: {}, escala: 1, estado: "todas" };
+  if (!estadoExtra[id]) estadoExtra[id] = { orden: "spend", desc: true, porPagina: 10, pagina: 1, m1: "clicks", m2: "conversions", valores: {}, escala: 1.2, estado: "todas" };
   return estadoExtra[id];
 }
 
@@ -1548,6 +1564,7 @@ function capturarVista() {
     compararDesde: document.querySelector("#compare-start").value,
     compararHasta: document.querySelector("#compare-end").value,
     granularidad: state.granularity,
+    escalaGrafico: state.escalaGrafico,
     kpis: [...listaKpis()],
     serie: [...state.selectedMetrics],
     /* Los tipos de gráfico son de toda la sesión; en la vista sólo se guardan
@@ -1579,6 +1596,7 @@ function aplicarVista(v) {
   state.tableMetrics[DATOS.tipo] = columnas;
   state.expandedMetrics = new Set(validos(e.expandidas));
   if (e.granularidad) state.granularity = e.granularidad;
+  if (ESCALAS_TEXTO.includes(e.escalaGrafico)) state.escalaGrafico = e.escalaGrafico;
   if (e.extras) for (const [id, ajustes] of Object.entries(e.extras)) estadoExtra[id] = { ...ajustesDe(id), ...ajustes };
 
   state.objective = e.objetivo || TODOS_LOS_OBJETIVOS;
@@ -1809,6 +1827,12 @@ function elegirComparacion(){
 ["#compare-start","#compare-end"].forEach(sel=>document.querySelector(sel).onchange=()=>{
   const custom=document.querySelector('input[name="comparison"][value="custom"]');
   custom.checked=true; elegirComparacion();
+});
+document.querySelectorAll("[data-escala-grafico]").forEach(b=>b.onclick=()=>{
+  const i=ESCALAS_TEXTO.indexOf(state.escalaGrafico||1)+(b.dataset.escalaGrafico==="+"?1:-1);
+  if(i<0||i>=ESCALAS_TEXTO.length) return;
+  state.escalaGrafico=ESCALAS_TEXTO[i];
+  renderChart();
 });
 document.querySelector("#ampliar-evolucion").onclick=()=>
   ampliarGrafico(document.querySelector("#evolution-chart"), document.querySelector("#chart-title").textContent);
