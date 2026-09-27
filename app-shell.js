@@ -133,8 +133,12 @@ function pintarConexion() {
   const c = $("#connection");
   c.classList.toggle("is-live", conexionViva);
   c.classList.toggle("is-down", !conexionViva);
-  $("#connection-text").textContent = conexionViva ? "Datos Sincronizados" : "DATOS NO CONECTADOS";
-  c.title = conexionViva ? "Datos al día. Clic para volver a consultar." : (detalleConexion || "No se pudo consultar Windsor. Clic para reintentar.");
+  $("#connection-text").textContent = conexionViva ? "Datos Sincronizados" : "DATOS DESINCRONIZADOS";
+  /* El detalle del error va en el título: en la barra entra una palabra, pero
+     quien necesite saber qué falló lo tiene a un hover. */
+  c.title = conexionViva
+    ? "Los datos son los que devolvió Windsor en la última consulta. Clic para volver a consultar."
+    : (detalleConexion ? `No se pudo consultar Windsor: ${detalleConexion} Clic para reintentar.` : "No se pudo consultar Windsor. Clic para reintentar.");
 }
 $("#connection").onclick = () => {
   if (window.DatosEmisarios) window.DatosEmisarios.cargar();

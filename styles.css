@@ -209,6 +209,10 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .connection.is-down { color: var(--danger); font-weight: 700; letter-spacing: .02em; }
 .connection.is-down .connection-dot { display: none; }
 .connection.is-down .connection-cross { display: grid; place-items: center; }
+/* Cómo están los datos y el botón para volver a pedirlos son lo mismo: se
+   agrupan a la derecha en vez de dejar el indicador suelto en el medio de la
+   barra, donde no se sabe a qué pertenece. */
+.topbar-estado { display: flex; align-items: center; gap: 4px; }
 
 /* Botón de filtros: aplicado queda gris y sin clic hasta que algo cambie. */
 .heading-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }

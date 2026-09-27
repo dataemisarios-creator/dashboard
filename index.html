@@ -141,17 +141,21 @@
             </button>
             <span id="breadcrumb"></span>
           </div>
-          <button class="connection is-live" id="connection" type="button" aria-live="polite" title="Demo: clic para simular una caída de la conexión">
-            <span class="connection-dot" aria-hidden="true"></span>
-            <span class="connection-cross" aria-hidden="true">
-              <svg viewBox="0 0 18 18"><path d="M3 3l12 12M15 3 3 15" /></svg>
-            </span>
-            <span id="connection-text">Datos Sincronizados</span>
-          </button>
-          <button class="refrescar" id="refrescar" type="button" title="Volver a consultar a Windsor con los mismos filtros">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-.6 4" /><path d="M20 4v7h-7" /></svg>
-            <span>Actualizar</span>
-          </button>
+          <!-- El estado de la conexión y el botón de actualizar son la misma
+               idea: cómo están los datos y cómo pedirlos de nuevo. Van juntos. -->
+          <div class="topbar-estado">
+            <button class="connection is-live" id="connection" type="button" aria-live="polite">
+              <span class="connection-dot" aria-hidden="true"></span>
+              <span class="connection-cross" aria-hidden="true">
+                <svg viewBox="0 0 18 18"><path d="M3 3l12 12M15 3 3 15" /></svg>
+              </span>
+              <span id="connection-text">Datos Sincronizados</span>
+            </button>
+            <button class="refrescar" id="refrescar" type="button" title="Volver a consultar a Windsor con los mismos filtros">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-.6 4" /><path d="M20 4v7h-7" /></svg>
+              <span>Actualizar</span>
+            </button>
+          </div>
         </header>
 
         <!-- ─────────────── Vista: dashboard de plataforma ─────────────── -->
