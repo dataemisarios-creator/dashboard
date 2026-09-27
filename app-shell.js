@@ -268,7 +268,7 @@ function elegirCliente(cliente) {
   /* Los reportes son de un cliente: si se cambia de cliente estando en esa
      vista, hay que volver a preguntar por su carpeta. */
   if (vistaActiva === "reports") pintarReportes();
-  if (vistaActiva === "tasks") pintarTareas();
+  if (vistaActiva === "tasks") { pintarRuta(rutaDeVista("tasks")); pintarTareas(); }
 }
 
 /* Al cambiar de cuenta el panel se repinta entero: los filtros quedan aplicados. */
@@ -620,6 +620,38 @@ const CUADROS_TAREAS = [
 ];
 const TODAS_TAREAS = { clave: "todas", etiqueta: "Todas", prueba: (c) => c.viva || c.estado === "bloqueada" };
 
+/* Cuando algo falta o se rompe, un párrafo gris no ayuda a nadie: explica el
+   problema y de paso hace sentir que el panel está roto. El perro con los dos
+   cables cortados dice lo mismo, pero deja claro que es una situación prevista
+   y no una pantalla colgada. */
+const PERRO_ROTO = `<svg class="perro-roto" viewBox="0 0 240 190" role="img" aria-label="Un perro triste sosteniendo dos cables cortados">
+  <ellipse cx="120" cy="176" rx="74" ry="9" fill="#e1d7ff" opacity=".55"/>
+  <path d="M14 150 C 54 150, 66 128, 92 124" stroke="#9966ff" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <path d="M226 150 C 186 150, 174 128, 148 124" stroke="#331d75" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <path d="M100 120 l10 -4 M101 126 l11 1 M103 132 l10 5" stroke="#9966ff" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <path d="M140 120 l-10 -4 M139 126 l-11 1 M137 132 l-10 5" stroke="#331d75" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <path d="M120 100 l7 -13 -2.5 9 7.5 -2.5 -9 14 2.5 -8.5 z" fill="#ffb020"/>
+  <path d="M56 120 q-16 -34 4 -50 q16 -12 24 10 z" fill="#c9b8a6"/>
+  <path d="M184 120 q16 -34 -4 -50 q-16 -12 -24 10 z" fill="#c9b8a6"/>
+  <path d="M120 24 c34 0 54 22 54 50 c0 30 -24 48 -54 48 c-30 0 -54 -18 -54 -48 c0 -28 20 -50 54 -50 z" fill="#e5d9cb"/>
+  <ellipse cx="120" cy="96" rx="25" ry="19" fill="#f3ece3"/>
+  <path d="M120 84 c7 0 11 4 11 8 c0 5 -5 8 -11 8 c-6 0 -11 -3 -11 -8 c0 -4 4 -8 11 -8 z" fill="#3b2f2a"/>
+  <path d="M120 100 v8 M120 108 q-7 5 -13 1 M120 108 q7 5 13 1" stroke="#3b2f2a" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+  <path d="M92 66 q9 8 18 0" stroke="#3b2f2a" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M130 66 q9 8 18 0" stroke="#3b2f2a" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M88 52 q10 -6 20 -1" stroke="#b9a894" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+  <path d="M132 51 q10 -5 20 1" stroke="#b9a894" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+  <path d="M101 78 c4 6 6 9 6 12 a6 6 0 0 1 -12 0 c0 -3 2 -6 6 -12 z" fill="#7cc4f2"/>
+  <ellipse cx="92" cy="128" rx="15" ry="11" fill="#e5d9cb"/>
+  <ellipse cx="148" cy="128" rx="15" ry="11" fill="#e5d9cb"/>
+</svg>`;
+
+/* Un estado vacío con dibujo, para cuando no hay tablero o algo falló. */
+const tarjetaRota = (mensaje) => `<div class="estado-roto">${PERRO_ROTO}
+  <p class="estado-roto-titulo">Lo siento, algo se rompió</p>
+  <p class="estado-roto-texto">${mensaje}</p>
+</div>`;
+
 const diaCorto = (iso) => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("es-AR", { day: "numeric", month: "short" });
@@ -661,14 +693,14 @@ async function pintarTareas(forzar = false) {
     datos = await api(`/api/tareas?cliente=${encodeURIComponent(clienteActual.id)}${forzar ? "&refrescar=1" : ""}`);
   } catch (e) {
     if (pedido !== pedidoDeTareas) return;
-    $("#tasks-kpis").innerHTML = `<p class="tasks-vacio">No se pudieron leer las tareas: ${e.message}</p>`;
+    $("#tasks-kpis").innerHTML = tarjetaRota(`No pudimos leer el tablero. ${e.message}`);
     return;
   }
   if (pedido !== pedidoDeTareas) return;
 
   if (!datos.tablero) {
     $("#tasks-title").textContent = "Sin tablero";
-    $("#tasks-kpis").innerHTML = `<p class="tasks-vacio">${clienteActual.nombre} todavía no tiene un tablero de Trello conectado.</p>`;
+    $("#tasks-kpis").innerHTML = tarjetaRota(`${clienteActual.nombre} todavía no tiene un tablero de Trello conectado, así que no hay tareas que mostrar.`);
     return;
   }
 
