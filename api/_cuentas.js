@@ -8,6 +8,9 @@
  * (`facebook__`, `google_ads__`, `tiktok__`): devuelve los mismos totales que
  * los conectores sueltos y admite los campos por campaña.
  *
+ * `drive` es el id de la carpeta del cliente en Drive, no su nombre: el
+ * nombre se puede cambiar en Drive sin romper nada, el id no cambia nunca.
+ *
  * `id` es único dentro del cliente y `tipo` dice con qué juego de indicadores
  * se lee la cuenta. Así un mismo cliente puede tener dos perfiles de la misma
  * red: cada uno es una entrada con su propio `id` y su propio `titulo`.
@@ -125,6 +128,7 @@ export const CLIENTES = [
     id: 'geely',
     nombre: 'Geely Argentina',
     inicial: 'GA',
+    drive: '1KiMgFjWoaLMBYkVYBTwonEWNksnSHfNs',
     cuentas: [
       google('610-951-8860', 'USD'),
       meta('988319067489641', 'USD'),
@@ -136,6 +140,7 @@ export const CLIENTES = [
     id: 'maitenaika',
     nombre: 'Maitenaika',
     inicial: 'MA',
+    drive: '1nBiZjlMR9BPOF79Hf9ThEYNwLVEgo5cM',
     cuentas: [
       google('863-751-8315', 'ARS'),
       meta('883265280922351', 'ARS', 'compras'),
@@ -146,6 +151,7 @@ export const CLIENTES = [
     id: 'emapi',
     nombre: 'Emapi',
     inicial: 'EM',
+    drive: '1jzT1j8xnDdu0ezvLmEXZwbYgDkGM6BqQ',
     cuentas: [
       google('804-008-4709', 'ARS'),
       meta('1038158381412382', 'ARS', 'leads'),
@@ -156,24 +162,28 @@ export const CLIENTES = [
     id: 'braulio',
     nombre: 'Braulio Inmuebles',
     inicial: 'BI',
+    drive: '12sRH7CdIZFpmapGuuYcI0MN6TuzehmjC',
     cuentas: [meta('9840767055978979', 'ARS')],
   },
   {
     id: 'monsa',
     nombre: 'Monsa',
     inicial: 'MO',
+    drive: '1GYmatcv_zkabaNxzdoQa6Athq05xiTGN',
     cuentas: [google('275-422-2293', 'ARS'), meta('9877067379036937', 'ARS', 'leads')],
   },
   {
     id: 'cavanelas',
     nombre: 'Lácteos Cavanelas',
     inicial: 'LC',
+    drive: '1w4FuyCvCaQ-qiB0VGnb-giA989_UA-dI',
     cuentas: [google('147-242-8435', 'ARS'), meta('1026609426319405', 'ARS', 'conversaciones')],
   },
   {
     id: 'textilvalerio',
     nombre: 'Textil Valerio',
     inicial: 'TV',
+    drive: '1uI8F2d3xVYz9xktjOLuaJ3iKJCT31CxL',
     cuentas: [
       google('874-342-6392', 'ARS'),
       meta('1837821276837800', 'ARS', 'conversaciones'),
@@ -186,6 +196,7 @@ export const CLIENTES = [
     id: 'atletic',
     nombre: 'Atletic Services',
     inicial: 'AS',
+    drive: '1N04cGwwLZh4mCTktaZ-kjGgC4szupqCT',
     cuentas: [google('724-843-4509', 'ARS'), meta('803853493716428', 'ARS', 'compras')],
   },
 ];

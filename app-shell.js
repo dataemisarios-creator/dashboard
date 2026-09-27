@@ -254,6 +254,9 @@ function elegirCliente(cliente) {
   pintarNavDeCuentas(cliente);
   if (window.DatosEmisarios) window.DatosEmisarios.elegirCliente(cliente, cliente.cuentas[0]);
   if (vistaActiva === "dashboard") pintarRuta(rutaDeVista("dashboard"));
+  /* Los reportes son de un cliente: si se cambia de cliente estando en esa
+     vista, hay que volver a preguntar por su carpeta. */
+  if (vistaActiva === "reports") pintarReportes();
 }
 
 /* Al cambiar de cuenta el panel se repinta entero: los filtros quedan aplicados. */
@@ -376,7 +379,7 @@ const accionesDelPerfil = () => ACCIONES_POR_ROL[sesion?.rol] || ACCIONES_POR_RO
 function pintarReportes() {
   pintarReportesRapidos();
   pintarAnios();
-  pintarMeses();
+  cargarMeses();
 }
 
 /* Marcas de cada plataforma, planas y con su color, para reconocer la tarjeta
@@ -428,16 +431,50 @@ function pintarReportesRapidos() {
   }));
 }
 
-/* Por ahora sólo el año en curso: los reportes arrancan este año. */
-function pintarAnios() {
-  const actual = new Date().getFullYear();
-  const select = $("#report-year");
-  if (select.options.length) return;
-  select.add(new Option(actual, actual));
-  select.onchange = pintarMeses;
+/* Qué meses tienen reporte sale de la carpeta del cliente en Google Drive. El
+   navegador no habla con Google: pide a /api/drive, que es quien tiene la
+   credencial. Mientras no llegue la respuesta los meses quedan apagados, que es
+   preferible a encender un botón y apagarlo un segundo después. */
+let mesesConReporte = {};
+let pedidoDeMeses = 0;
+
+async function cargarMeses() {
+  if (!clienteActual) { mesesConReporte = {}; pintarMeses(); return; }
+  const pedido = (pedidoDeMeses += 1);
+  mesesConReporte = {};
+  pintarMeses(true);
+  try {
+    const datos = await api(`/api/drive?cliente=${encodeURIComponent(clienteActual.id)}`);
+    /* Si mientras tanto se cambió de cliente, esta respuesta ya no corresponde
+       a lo que se está mirando. */
+    if (pedido !== pedidoDeMeses) return;
+    mesesConReporte = datos.meses || {};
+  } catch (e) {
+    if (pedido !== pedidoDeMeses) return;
+    aviso(`No se pudieron leer los reportes: ${e.message}`);
+  }
+  pintarAnios();
+  pintarMeses();
 }
 
-function pintarMeses() {
+/* Los años salen de lo que haya en la carpeta, más el año en curso: si alguien
+   sube el reporte de un año viejo, aparece sin tocar código. */
+function pintarAnios() {
+  const select = $("#report-year");
+  const elegido = Number(select.value) || new Date().getFullYear();
+  const anios = new Set([new Date().getFullYear()]);
+  for (const clave of Object.keys(mesesConReporte)) anios.add(Number(clave.slice(0, 4)));
+  const orden = [...anios].sort((a, b) => b - a);
+
+  select.innerHTML = "";
+  for (const a of orden) select.add(new Option(a, a));
+  select.value = anios.has(elegido) ? elegido : orden[0];
+  select.onchange = () => pintarMeses();
+}
+
+const claveDeMes = (anio, i) => `${anio}-${String(i + 1).padStart(2, "0")}`;
+
+function pintarMeses(cargando = false) {
   const { entrar, aprueba } = accionesDelPerfil();
   const anio = Number($("#report-year").value);
   const hoy = new Date();
@@ -445,16 +482,34 @@ function pintarMeses() {
     /* Sólo los meses cerrados. El reporte de un mes se arma al mes siguiente,
        así que el mes en curso todavía no tiene nada que pedir. */
     const abierto = anio > hoy.getFullYear() || (anio === hoy.getFullYear() && i >= hoy.getMonth());
+    const reporte = mesesConReporte[claveDeMes(anio, i)];
+    const listo = !abierto && !cargando && !!reporte;
+    const vacio = !abierto && !cargando && !reporte;
     return `<div class="month-row${abierto ? " is-future" : ""}">
       <span class="month-name">${mes}</span>
-      <button class="month-action" type="button" data-mes="${i}" ${abierto ? "disabled" : ""}>${entrar}</button>
-      ${aprueba ? `<button class="month-action is-approve" type="button" data-aprobar="${i}" ${abierto ? "disabled" : ""}>APROBAR Y PUBLICAR</button>` : ""}
+      ${vacio ? `<span class="month-nota">Sin reporte</span>` : ""}
+      <button class="month-action" type="button" data-mes="${i}" ${listo ? "" : "disabled"}>${entrar}</button>
+      ${aprueba ? `<button class="month-action is-approve" type="button" data-aprobar="${i}" ${listo ? "" : "disabled"}>APROBAR Y PUBLICAR</button>` : ""}
     </div>`;
   }).join("");
 
-  const nombre = (i) => `${MESES[i].toLowerCase()} de ${anio}`;
-  $$("[data-mes]").forEach((b) => (b.onclick = () => aviso(`El histórico mensual todavía no está conectado: falta definir de dónde sale el reporte de ${nombre(b.dataset.mes)}.`)));
-  $$("[data-aprobar]").forEach((b) => (b.onclick = () => aviso(`Aprobar y publicar todavía no está conectado: falta definir el circuito de aprobación de ${nombre(b.dataset.aprobar)}.`)));
+  $$("[data-mes]").forEach((b) => (b.onclick = () => bajarReporte(Number(b.dataset.mes))));
+  $$("[data-aprobar]").forEach((b) => (b.onclick = () =>
+    aviso("Aprobar y publicar todavía no está conectado: falta definir el circuito de aprobación.")));
+}
+
+/* El archivo se pide a la propia API y no a Drive: así quien descarga su
+   reporte no necesita cuenta de Google ni acceso a la carpeta de la agencia. */
+function bajarReporte(i) {
+  const anio = Number($("#report-year").value);
+  const reporte = mesesConReporte[claveDeMes(anio, i)];
+  if (!reporte || !clienteActual) return;
+  const enlace = document.createElement("a");
+  enlace.href = `/api/drive?cliente=${encodeURIComponent(clienteActual.id)}&archivo=${encodeURIComponent(reporte.id)}`;
+  enlace.download = reporte.nombre;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
 }
 
 /* ── Usuarios y accesos ──────────────────────────────────────────────────
