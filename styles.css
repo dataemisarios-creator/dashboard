@@ -542,6 +542,13 @@ td.negative { color: var(--danger); }
 /* Un mes sin archivo en Drive no es un error: se dice, en chico, para que no
    parezca que el botón está roto. */
 .month-nota { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--muted-ink); white-space: nowrap; }
+/* Publicado es el estado que le importa al cliente: se marca en verde para
+   distinguirlo de un mes que todavía está en borrador. */
+.month-nota.es-publicado { color: #1c7a4a; }
+/* Ya publicado, el segundo botón deja de ser una acción a hacer y pasa a ser
+   una marcha atrás: se apaga para que no compita con nada. */
+.month-action.is-approve.esta-publicado { background: var(--canvas-strong); color: var(--muted-ink); }
+.month-action.is-approve.esta-publicado:hover:not(:disabled) { background: #e5dff5; color: var(--ink); }
 
 @media (max-width: 1180px) { .months-grid { grid-template-columns: 1fr; grid-template-rows: none; grid-auto-flow: row; } }
 @media (max-width: 700px) {

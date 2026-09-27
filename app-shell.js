@@ -366,13 +366,16 @@ function descargarTodo(desde, hasta) {
 const MESES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
   "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
 
-/* Qué botones ve cada perfil en cada mes. `aprueba` agrega el segundo botón. */
+/* Qué botones ve cada perfil en cada mes, y qué hace el primero. El cliente
+   DESCARGA el reporte ya publicado; quien lo trabaja INGRESA al archivo en
+   Drive, que es donde se edita. Son dos acciones distintas, no la misma con
+   otro nombre. */
 const ACCIONES_POR_ROL = {
-  Cliente: { entrar: "DESCARGAR", aprueba: false },
-  Lectura: { entrar: "DESCARGAR", aprueba: false },
-  Especialista: { entrar: "INGRESAR", aprueba: false },
-  PM: { entrar: "INGRESAR", aprueba: true },
-  Administrador: { entrar: "INGRESAR", aprueba: true },
+  Cliente: { entrar: "DESCARGAR", descarga: true, aprueba: false },
+  Lectura: { entrar: "DESCARGAR", descarga: true, aprueba: false },
+  Especialista: { entrar: "INGRESAR", descarga: false, aprueba: false },
+  PM: { entrar: "INGRESAR", descarga: false, aprueba: true },
+  Administrador: { entrar: "INGRESAR", descarga: false, aprueba: true },
 };
 const accionesDelPerfil = () => ACCIONES_POR_ROL[sesion?.rol] || ACCIONES_POR_ROL.Cliente;
 
@@ -431,17 +434,20 @@ function pintarReportesRapidos() {
   }));
 }
 
-/* Qué meses tienen reporte sale de la carpeta del cliente en Google Drive. El
-   navegador no habla con Google: pide a /api/drive, que es quien tiene la
-   credencial. Mientras no llegue la respuesta los meses quedan apagados, que es
-   preferible a encender un botón y apagarlo un segundo después. */
+/* Qué meses tienen reporte sale de la carpeta del cliente en Google Drive, y
+   cuáles están aprobados sale del almacén propio: Drive guarda los archivos, no
+   el estado del circuito. El navegador no habla con Google ni con el almacén:
+   pide a /api/drive, que es quien tiene la credencial y quien decide. */
 let mesesConReporte = {};
+let mesesPublicados = {};
+let puedoAprobar = false;
 let pedidoDeMeses = 0;
 
 async function cargarMeses() {
-  if (!clienteActual) { mesesConReporte = {}; pintarMeses(); return; }
+  if (!clienteActual) { mesesConReporte = {}; mesesPublicados = {}; pintarMeses(); return; }
   const pedido = (pedidoDeMeses += 1);
   mesesConReporte = {};
+  mesesPublicados = {};
   pintarMeses(true);
   try {
     const datos = await api(`/api/drive?cliente=${encodeURIComponent(clienteActual.id)}`);
@@ -449,6 +455,8 @@ async function cargarMeses() {
        a lo que se está mirando. */
     if (pedido !== pedidoDeMeses) return;
     mesesConReporte = datos.meses || {};
+    mesesPublicados = datos.publicados || {};
+    puedoAprobar = !!datos.aprueba;
   } catch (e) {
     if (pedido !== pedidoDeMeses) return;
     aviso(`No se pudieron leer los reportes: ${e.message}`);
@@ -474,32 +482,56 @@ function pintarAnios() {
 
 const claveDeMes = (anio, i) => `${anio}-${String(i + 1).padStart(2, "0")}`;
 
+const fechaCorta = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" });
+};
+
 function pintarMeses(cargando = false) {
-  const { entrar, aprueba } = accionesDelPerfil();
+  const { entrar, descarga, aprueba } = accionesDelPerfil();
   const anio = Number($("#report-year").value);
   const hoy = new Date();
   $("#months-grid").innerHTML = MESES.map((mes, i) => {
     /* Sólo los meses cerrados. El reporte de un mes se arma al mes siguiente,
        así que el mes en curso todavía no tiene nada que pedir. */
     const abierto = anio > hoy.getFullYear() || (anio === hoy.getFullYear() && i >= hoy.getMonth());
-    const reporte = mesesConReporte[claveDeMes(anio, i)];
-    const listo = !abierto && !cargando && !!reporte;
-    const vacio = !abierto && !cargando && !reporte;
+    const clave = claveDeMes(anio, i);
+    const reporte = mesesConReporte[clave];
+    const sello = mesesPublicados[clave];
+    const hay = !abierto && !cargando && !!reporte;
+    /* El cliente sólo puede bajar lo que ya se publicó; quien lo trabaja entra
+       al archivo apenas existe. */
+    const listo = hay && (descarga ? !!sello : !!reporte.enlace);
+
+    let nota = "";
+    if (!abierto && !cargando && !reporte) nota = `<span class="month-nota">Sin reporte</span>`;
+    else if (hay && sello) nota = `<span class="month-nota es-publicado" title="Publicado por ${sello.por} el ${fechaCorta(sello.cuando)}">Publicado</span>`;
+    else if (hay) nota = `<span class="month-nota">Sin publicar</span>`;
+
     return `<div class="month-row${abierto ? " is-future" : ""}">
       <span class="month-name">${mes}</span>
-      ${vacio ? `<span class="month-nota">Sin reporte</span>` : ""}
+      ${nota}
       <button class="month-action" type="button" data-mes="${i}" ${listo ? "" : "disabled"}>${entrar}</button>
-      ${aprueba ? `<button class="month-action is-approve" type="button" data-aprobar="${i}" ${listo ? "" : "disabled"}>APROBAR Y PUBLICAR</button>` : ""}
+      ${aprueba ? `<button class="month-action is-approve${sello ? " esta-publicado" : ""}" type="button" data-aprobar="${i}" ${hay ? "" : "disabled"}>${sello ? "QUITAR PUBLICACIÓN" : "APROBAR Y PUBLICAR"}</button>` : ""}
     </div>`;
   }).join("");
 
-  $$("[data-mes]").forEach((b) => (b.onclick = () => bajarReporte(Number(b.dataset.mes))));
-  $$("[data-aprobar]").forEach((b) => (b.onclick = () =>
-    aviso("Aprobar y publicar todavía no está conectado: falta definir el circuito de aprobación.")));
+  $$("[data-mes]").forEach((b) => (b.onclick = () =>
+    (descarga ? bajarReporte : abrirEnDrive)(Number(b.dataset.mes))));
+  $$("[data-aprobar]").forEach((b) => (b.onclick = () => cambiarPublicacion(Number(b.dataset.aprobar), b)));
 }
 
-/* El archivo se pide a la propia API y no a Drive: así quien descarga su
-   reporte no necesita cuenta de Google ni acceso a la carpeta de la agencia. */
+/* Quien trabaja el reporte va al archivo donde vive, con su propia cuenta de
+   Google. Si no tiene permiso, Drive le ofrece pedirlo: es la pantalla correcta
+   para eso y no algo que el panel deba resolver por su cuenta. */
+function abrirEnDrive(i) {
+  const reporte = mesesConReporte[claveDeMes(Number($("#report-year").value), i)];
+  if (!reporte || !reporte.enlace) return;
+  window.open(reporte.enlace, "_blank", "noopener");
+}
+
+/* El archivo se pide a la propia API y no a Drive: así el cliente que descarga
+   su reporte no necesita cuenta de Google ni acceso a la carpeta de la agencia. */
 function bajarReporte(i) {
   const anio = Number($("#report-year").value);
   const reporte = mesesConReporte[claveDeMes(anio, i)];
@@ -510,6 +542,30 @@ function bajarReporte(i) {
   document.body.appendChild(enlace);
   enlace.click();
   enlace.remove();
+}
+
+async function cambiarPublicacion(i, boton) {
+  if (!clienteActual) return;
+  const anio = Number($("#report-year").value);
+  const clave = claveDeMes(anio, i);
+  const publicar = !mesesPublicados[clave];
+  const nombre = `${MESES[i].toLowerCase()} de ${anio}`;
+  if (!publicar && !confirm(`Se va a quitar la publicación del reporte de ${nombre}. El cliente deja de poder descargarlo. ¿Seguís?`)) return;
+
+  boton.disabled = true;
+  try {
+    const datos = await api("/api/drive", {
+      method: "POST",
+      body: { cliente: clienteActual.id, mes: clave, publicar },
+    });
+    mesesPublicados = datos.publicados || {};
+    aviso(publicar
+      ? `El reporte de ${nombre} quedó publicado: el cliente ya puede descargarlo.`
+      : `El reporte de ${nombre} dejó de estar publicado.`);
+  } catch (e) {
+    aviso(`No se pudo guardar: ${e.message}`);
+  }
+  pintarMeses();
 }
 
 /* ── Usuarios y accesos ──────────────────────────────────────────────────

@@ -259,6 +259,50 @@ export async function guardarVistas(usuarioId, datos) {
   if (aBorrar.length) await del(aBorrar).catch(() => {});
 }
 
+/* ──────────────────────────────────────── reportes publicados */
+
+/* Qué reporte mensual está aprobado no vive en Drive sino acá, y por dos
+   razones. Una: la cuenta de servicio entra a Drive con permiso de lectura, así
+   que el panel no puede mover ni marcar nada del otro lado. Dos: hace falta
+   saber quién aprobó y cuándo, y una carpeta no guarda eso.
+   Se archiva un blob por cliente: aprobar el reporte de uno no puede pisar el
+   del otro. */
+const PREFIJO_REPORTES = 'reportes/';
+
+async function versionesDeReportes(cliente) {
+  const { blobs } = await list({ prefix: `${PREFIJO_REPORTES}${cliente}-` });
+  return blobs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+}
+
+export async function leerPublicados(cliente) {
+  if (!hayBlob()) return {};
+  try {
+    for (const blob of (await versionesDeReportes(cliente)).slice(0, 2)) {
+      const respuesta = await fetch(blob.url, { cache: 'no-store' });
+      if (!respuesta.ok) continue;
+      const datos = JSON.parse(await descifrar(Buffer.from(await respuesta.arrayBuffer())));
+      return datos && typeof datos === 'object' ? datos : {};
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+export async function guardarPublicados(cliente, datos) {
+  if (!hayBlob()) throw new Error('No hay almacenamiento conectado para guardar las aprobaciones.');
+  const viejas = await versionesDeReportes(cliente);
+  await put(`${PREFIJO_REPORTES}${cliente}-${Date.now()}.json`, await cifrar(JSON.stringify(datos)), {
+    access: 'public',
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    contentType: 'application/octet-stream',
+    cacheControlMaxAge: 0,
+  });
+  const aBorrar = viejas.slice(1).map((b) => b.url);
+  if (aBorrar.length) await del(aBorrar).catch(() => {});
+}
+
 /* ────────────────────────────────────────────────────────── permisos */
 
 /* El acceso se da por cuenta y por plataforma: cada usuario guarda una lista de
@@ -273,6 +317,11 @@ export async function usuarioDeSesion(sesion) {
 /* El Project Manager ve lo mismo que el administrador. La diferencia está en
    otro lado: no puede dar ni quitar accesos, y eso lo decide `usuarios.js`. */
 const VEN_TODO = new Set(['Administrador', 'PM']);
+
+/* Aprobar y publicar el reporte del mes lo deciden los mismos dos roles: el
+   especialista lo trabaja, ellos lo dan por bueno. */
+export const puedeAprobar = (usuario) =>
+  !!usuario && usuario.activo !== false && VEN_TODO.has(usuario.rol);
 
 export function permisosDe(usuario) {
   if (!usuario || usuario.activo === false) return new Set();

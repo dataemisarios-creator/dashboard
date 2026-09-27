@@ -1,4 +1,7 @@
-import { exigirSesion, usuarioDeSesion, permisosDe, puedeVer } from './_comun.js';
+import {
+  exigirSesion, usuarioDeSesion, permisosDe, puedeVer,
+  puedeAprobar, leerPublicados, guardarPublicados,
+} from './_comun.js';
 import { buscarCliente } from './_cuentas.js';
 
 /**
@@ -144,6 +147,10 @@ async function mesesDe(carpeta) {
           tipo: f.mimeType,
           peso: Number(f.size) || null,
           modificado: f.modifiedTime,
+          /* El enlace a Drive es para quien trabaja el reporte: abre el archivo
+             donde vive, con los permisos de su propia cuenta de Google. Si no
+             lo tiene, Drive le ofrece pedirlo, que es lo que corresponde. */
+          enlace: f.webViewLink || null,
         };
       }
     }
@@ -166,27 +173,67 @@ export default async function handler(req, res) {
   if (!sesion) return;
 
   try {
-    const cliente = buscarCliente(String(req.query?.cliente || ''));
+    /* Al leer, el cliente viene en la consulta; al aprobar, en el cuerpo. */
+    const cliente = buscarCliente(String(req.query?.cliente || req.body?.cliente || ''));
     if (!cliente) return res.status(404).json({ error: 'Ese cliente no existe.' });
-    if (!cliente.drive) return res.status(200).json({ meses: {} });
+    if (!cliente.drive) return res.status(200).json({ meses: {}, publicados: {}, aprueba: false });
 
-    const permisos = permisosDe(await usuarioDeSesion(sesion));
+    const usuario = await usuarioDeSesion(sesion);
+    const permisos = permisosDe(usuario);
     if (!puedeVerCliente(permisos, cliente))
       return res.status(403).json({ error: 'No tenés acceso a los reportes de este cliente.' });
 
+    /* Aprobar y publicar es del administrador y del PM; el resto sólo lee. */
+    const aprueba = puedeAprobar(usuario);
+
+    if (req.method === 'POST') {
+      if (!aprueba)
+        return res.status(403).json({ error: 'Sólo un administrador o un PM puede aprobar un reporte.' });
+
+      const mes = String(req.body?.mes || '');
+      if (!/^\d{4}-\d{2}$/.test(mes))
+        return res.status(400).json({ error: 'Falta el mes del reporte.' });
+
+      const meses = await mesesDe(cliente.drive);
+      const publicados = await leerPublicados(cliente.id);
+
+      if (req.body?.publicar === false) delete publicados[mes];
+      else {
+        if (!meses[mes])
+          return res.status(409).json({ error: 'No hay ningún archivo para ese mes en la carpeta.' });
+        publicados[mes] = {
+          por: usuario.nombre || usuario.usuario,
+          cuando: new Date().toISOString(),
+          /* Se guarda de qué archivo se trataba: si después alguien sube uno
+             nuevo, se nota que lo aprobado no es lo que está publicado. */
+          archivo: meses[mes].id,
+        };
+      }
+      await guardarPublicados(cliente.id, publicados);
+      return res.status(200).json({ meses, publicados, aprueba });
+    }
+
     const meses = await mesesDe(cliente.drive);
+    const publicados = await leerPublicados(cliente.id);
     const archivo = String(req.query?.archivo || '');
 
     if (!archivo) {
       res.setHeader('Cache-Control', 'private, max-age=0, no-store');
-      return res.status(200).json({ meses });
+      return res.status(200).json({ meses, publicados, aprueba });
     }
 
     /* Sólo se entrega un archivo que esté en la carpeta de este cliente: con
        el id a secas, cualquiera podría pedir cualquier cosa que la cuenta de
        servicio alcance a leer. */
-    const encontrado = Object.values(meses).find((m) => m.id === archivo);
-    if (!encontrado) return res.status(404).json({ error: 'Ese reporte ya no está en la carpeta.' });
+    const mes = Object.keys(meses).find((k) => meses[k].id === archivo);
+    if (!mes) return res.status(404).json({ error: 'Ese reporte ya no está en la carpeta.' });
+
+    /* El cliente descarga el reporte ya publicado, nunca un borrador. Quien lo
+       aprueba trabaja sobre el archivo en Drive, no sobre esta descarga. */
+    if (!aprueba && !publicados[mes])
+      return res.status(403).json({ error: 'Ese reporte todavía no está publicado.' });
+
+    const encontrado = meses[mes];
 
     const r = await drive(`${API}/${archivo}`, { alt: 'media' });
     res.setHeader('Content-Type', encontrado.tipo || 'application/octet-stream');
