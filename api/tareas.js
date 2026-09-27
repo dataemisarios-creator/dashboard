@@ -85,10 +85,14 @@ function ordenarTablero(bruto) {
   const tarjetas = (bruto.cards || []).map((c) => {
     const vence = c.due ? new Date(c.due) : null;
     const estado = estadoPorLista[c.idList] || 'pendiente';
-    /* Entregada por cualquiera de los dos caminos: movida a HECHO, que es como
-       trabaja el equipo, o con la casilla de la fecha tildada. */
-    const entregada = estado === 'hecho' || !!c.dueComplete;
-    const viva = EN_MARCHA.has(estado) && !entregada;
+    /* Lo que decide si una tarea terminó es la lista, no la casilla de la
+       fecha. Tildar esa casilla en una tarjeta que está EN REVISIÓN quiere
+       decir «lo entregué a tiempo», no «el PM ya lo revisó»: si contara como
+       entregada, desaparecería de la cola de revisión de quien tiene que
+       mirarla. La casilla sólo evita que figure como atrasada. */
+    const entregada = estado === 'hecho';
+    const aTiempo = !!c.dueComplete;
+    const viva = EN_MARCHA.has(estado);
     /* Una misma tarjeta se usa para pedir varias cosas, marcadas con un
        checklist, así que el avance no es sólo «hecha o no hecha». */
     const items = c.badges?.checkItems || 0;
@@ -105,8 +109,8 @@ function ordenarTablero(bruto) {
       viva,
       checklist: items ? { hechos: c.badges.checkItemsChecked || 0, total: items } : null,
       comentarios: c.badges?.comments || 0,
-      vencida: viva && !!vence && vence < ahora,
-      venceHoy: viva && !!vence && diaLocal(vence) === hoy,
+      vencida: viva && !aTiempo && !!vence && vence < ahora,
+      venceHoy: viva && !aTiempo && !!vence && diaLocal(vence) === hoy,
       ultimoMovimiento: c.dateLastActivity || null,
     };
   });
@@ -149,7 +153,7 @@ async function leerTrello() {
       enMarcha: vivas.length,
       vencidas: vivas.filter((c) => c.vencida).length,
       vencenHoy: vivas.filter((c) => c.venceHoy).length,
-      esperandoRevision: todas.filter((c) => c.estado === 'revision' && !c.entregada).length,
+      esperandoRevision: todas.filter((c) => c.estado === 'revision').length,
       bloqueadas: todas.filter((c) => c.estado === 'bloqueada').length,
       sinFecha: vivas.filter((c) => !c.vence).length,
       sinResponsable: vivas.filter((c) => !c.responsables.length).length,
