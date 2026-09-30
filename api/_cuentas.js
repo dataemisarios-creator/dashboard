@@ -50,7 +50,13 @@ const GOOGLE_METRICAS = 'spend,clicks,impressions,conversions,all_conversions,vi
    columnas: pedirles las demás sería arrastrar miles de filas de más. */
 const GOOGLE_METRICAS_DESGLOSE = 'spend,clicks,impressions,conversions,all_conversions,video_trueview_views';
 const GOOGLE = `date,campaign,advertising_channel_type,campaign_status,${GOOGLE_METRICAS}`;
-const GOOGLE_DESGLOSE = `campaign,ad_group_name,ad_group_status,ad_id,ad_group_ad_status,${GOOGLE_METRICAS}`;
+/* `phone_calls` no convive con el resto en una misma consulta: Google Ads no
+   tiene un reporte que contenga ese campo y los demás a la vez, así que Windsor
+   rechaza la consulta entera y el desglose volvía vacío. La tabla abría la
+   campaña y no mostraba nada. En la serie diaria sí funciona, por eso allá se
+   mantiene. */
+const GOOGLE_METRICAS_NIVEL = 'spend,clicks,impressions,conversions,all_conversions,video_trueview_views,interactions,conversions_value,all_conversions_value';
+const GOOGLE_DESGLOSE = `campaign,ad_group_name,ad_group_status,ad_id,ad_group_ad_status,${GOOGLE_METRICAS_NIVEL}`;
 const GOOGLE_EXTRAS = [
   /* Una palabra clave habilitada dentro de un grupo pausado no se muestra, así
      que su estado real es el del grupo. Se piden los dos y el panel se queda
