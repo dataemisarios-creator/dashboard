@@ -413,9 +413,24 @@
           <section class="panel">
             <form id="profile-form" class="user-form" novalidate>
               <div class="form-grid form-grid-3">
-                <label>Contraseña actual<input id="p-current" type="password" placeholder="••••••••" /></label>
-                <label>Nueva<input id="p-new" type="password" placeholder="Mínimo 12 caracteres" /></label>
-                <label>Repita la nueva<input id="p-repeat" type="password" placeholder="Repita la nueva contraseña" /></label>
+                <label>Contraseña actual
+                  <span class="campo-clave">
+                    <input id="p-current" type="password" placeholder="••••••••" />
+                    <button class="ver-clave" type="button" data-ver="p-current" aria-label="Mostrar la contraseña" aria-pressed="false"></button>
+                  </span>
+                </label>
+                <label>Nueva
+                  <span class="campo-clave">
+                    <input id="p-new" type="password" placeholder="Mínimo 12 caracteres" />
+                    <button class="ver-clave" type="button" data-ver="p-new" aria-label="Mostrar la contraseña" aria-pressed="false"></button>
+                  </span>
+                </label>
+                <label>Repita la nueva
+                  <span class="campo-clave">
+                    <input id="p-repeat" type="password" placeholder="Repita la nueva contraseña" />
+                    <button class="ver-clave" type="button" data-ver="p-repeat" aria-label="Mostrar la contraseña" aria-pressed="false"></button>
+                  </span>
+                </label>
               </div>
               <div class="form-actions">
                 <button class="primary-action" type="submit">Cambiar contraseña</button>
@@ -490,8 +505,18 @@
       <div class="dialog-body center">
         <span>Vas a cambiar la contraseña de</span>
         <strong class="dialog-title" id="password-target">—</strong>
-        <label class="stack">Escriba la Nueva Contraseña<input id="np-1" type="password" /></label>
-        <label class="stack">Repita la contraseña para confirmar<input id="np-2" type="password" /></label>
+        <label class="stack">Escriba la Nueva Contraseña
+          <span class="campo-clave">
+            <input id="np-1" type="password" autocomplete="new-password" />
+            <button class="ver-clave" type="button" data-ver="np-1" aria-label="Mostrar la contraseña" aria-pressed="false"></button>
+          </span>
+        </label>
+        <label class="stack">Repita la contraseña para confirmar
+          <span class="campo-clave">
+            <input id="np-2" type="password" autocomplete="new-password" />
+            <button class="ver-clave" type="button" data-ver="np-2" aria-label="Mostrar la contraseña" aria-pressed="false"></button>
+          </span>
+        </label>
         <p class="form-error" id="password-error" hidden></p>
         <button class="apply-button" id="password-confirm" type="button">CAMBIAR CONTRASEÑA</button>
         <button class="link-button" id="password-cancel" type="button">Cancelar</button>

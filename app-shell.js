@@ -1266,10 +1266,14 @@ function entrar(datos) {
     Cliente: "Cliente",
   };
   $("#profile-role").textContent = TITULO_ROL[datos.rol] || datos.rol;
-  // Sólo un administrador entra a la sección de accesos.
+  /* Un cliente ve sus cuentas, Reportes y su propio perfil, y nada más. Esto es
+     cosmética: el permiso de verdad lo imponen /api/usuarios y /api/tareas, que
+     responden 403 aunque alguien escriba la URL a mano. */
   $('[data-view="users"]').hidden = datos.rol !== "Administrador";
-  // Las tareas del equipo son para quien las controla, no para quien las hace.
   $('[data-view="tasks"]').hidden = !["Administrador", "PM"].includes(datos.rol);
+  /* Con el menú de administración vacío, su rótulo sobra. */
+  const admin = $(".nav-heading-admin");
+  if (admin) admin.hidden = datos.rol === "Cliente" || datos.rol === "Lectura";
   cargarUsuarios();
   // cargarClientes elige el primer cliente y eso dispara la consulta a Windsor.
   cargarClientes();

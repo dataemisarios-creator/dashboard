@@ -1,3 +1,11 @@
+/* El atributo `hidden` esconde con display:none desde la hoja del navegador, y
+   cualquier `display` propio le gana por especificidad. Eso ya escondió mal tres
+   cosas distintas: el botón del tablero de Trello, la fila de responsables y los
+   accesos del menú que un cliente no debe ver. Se corta de raíz para todo el
+   panel: si algo lleva `hidden`, no se ve. Las pocas excepciones deliberadas
+   piden `display` con su propio `[hidden]` más abajo. */
+[hidden] { display: none !important; }
+
 :root {
   --ink: #251b3d;
   --muted-ink: #776c89;
@@ -624,11 +632,6 @@ td.negative { color: var(--danger); }
 .primary-action.con-marca:hover { text-decoration: none; }
 .marca-trello { display: inline-grid; place-items: center; width: 18px; height: 18px; }
 .marca-trello svg { width: 100%; height: 100%; display: block; border-radius: 4px; }
-/* El atributo `hidden` esconde con display:none desde la hoja del navegador, y
-   cualquier `display` propio le gana. Sin esto, el botón del tablero y la fila
-   de responsables seguían a la vista en una cuenta sin tablero. */
-.primary-action.con-marca[hidden], .objective-row[hidden] { display: none !important; }
-
 /* Estado vacío ilustrado: se usa cuando no hay tablero o cuando la consulta
    falla. Ocupa el ancho del panel y se centra, como una página de error. */
 /* Vive dentro de la grilla de los cuadros de estado, así que sin esto queda
