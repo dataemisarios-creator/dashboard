@@ -274,27 +274,35 @@ async function versionesDeReportes(cliente) {
   return blobs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
 }
 
-const REPORTES_VACIO = { publicados: {}, asignados: {} };
+const vacioDeReportes = () => ({ publicados: {}, asignados: {} });
+const ES_MES = /^\d{4}-\d{2}$/;
 
 /* Guarda dos cosas por cliente: qué meses están publicados y qué archivo de
-   Drive se eligió para cada mes. La primera versión guardaba sólo lo publicado,
-   como un objeto de meses sueltos; si llega con esa forma se la acomoda para no
-   perder las aprobaciones que ya existían. */
+   Drive se eligió para cada mes.
+   La primera versión guardaba sólo lo publicado, como meses sueltos en la raíz
+   del objeto. Se los recoge siempre, convivan o no con las claves nuevas: una
+   lectura que los dejara afuera los borraría en la siguiente escritura, y con
+   ellos la aprobación de un reporte que el cliente ya está descargando.
+   Se arman objetos nuevos en cada lectura a propósito: devolver uno compartido
+   haría que una escritura ensuciara la próxima lectura. */
 export async function leerReportes(cliente) {
-  if (!hayBlob()) return { ...REPORTES_VACIO };
+  if (!hayBlob()) return vacioDeReportes();
   try {
     for (const blob of (await versionesDeReportes(cliente)).slice(0, 2)) {
       const respuesta = await fetch(blob.url, { cache: 'no-store' });
       if (!respuesta.ok) continue;
       const datos = JSON.parse(await descifrar(Buffer.from(await respuesta.arrayBuffer())));
-      if (!datos || typeof datos !== 'object') return { ...REPORTES_VACIO };
-      if (datos.publicados || datos.asignados)
-        return { publicados: datos.publicados || {}, asignados: datos.asignados || {} };
-      return { publicados: datos, asignados: {} };
+      if (!datos || typeof datos !== 'object') return vacioDeReportes();
+      const sueltos = Object.fromEntries(
+        Object.entries(datos).filter(([clave]) => ES_MES.test(clave)));
+      return {
+        publicados: { ...sueltos, ...(datos.publicados || {}) },
+        asignados: { ...(datos.asignados || {}) },
+      };
     }
-    return { ...REPORTES_VACIO };
+    return vacioDeReportes();
   } catch {
-    return { ...REPORTES_VACIO };
+    return vacioDeReportes();
   }
 }
 
