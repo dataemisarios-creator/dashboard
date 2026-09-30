@@ -64,9 +64,12 @@ export default async function handler(req, res) {
     /* Desglose por conjunto y por anuncio: consulta aparte y sin fecha, porque
        al nivel de anuncio las filas se multiplican y la serie diaria no las
        necesita. */
+    /* TEMPORAL: se guarda el motivo por el que falla el desglose para poder
+       diagnosticarlo. Se saca en cuanto esté resuelto. */
+    let fallaDesglose = null;
     const pedirDesglose = cuenta.desglose
       ? consultar('all', { date_from: desde, date_to: hasta, select_accounts: cuenta.cuenta, fields: cuenta.desglose })
-          .catch(() => [])
+          .catch((e) => { fallaDesglose = String(e && e.message || e).slice(0, 400); return []; })
       : Promise.resolve([]);
 
     /* El alcance único no se suma por día: sumarlo lo infla. Va sin desglose
@@ -149,6 +152,7 @@ export default async function handler(req, res) {
       niveles: cuenta.niveles || [],
       nivelesEstado: cuenta.nivelesEstado || [],
       desglose,
+      fallaDesglose,
       foto: fotos[0] || null,
       contenido,
       extras: extras.filter(Boolean),
