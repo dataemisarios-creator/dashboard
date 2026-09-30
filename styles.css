@@ -558,6 +558,30 @@ td.negative { color: var(--danger); }
    cabecera del panel de rendimiento. */
 .estados-tabla { display: flex; gap: 6px; flex-wrap: wrap; }
 
+/* Cuadro para elegir el archivo de un mes. La lista es alta pero acotada: con
+   cientos de archivos en la carpeta, el buscador es el camino, no el scroll. */
+.reporte-dialog { width: min(560px, calc(100vw - 28px)); }
+.reporte-dialog .dialog-body { padding: 18px; }
+.reporte-sub { margin: 0 0 12px; font-size: 13px; color: var(--muted-ink); }
+.reporte-buscar input, .reporte-url input {
+  width: 100%; min-height: 40px; padding: 0 14px; border: 1px solid var(--border);
+  border-radius: 999px; background: #fff; color: var(--ink); font: inherit; font-size: 13px;
+}
+.reporte-lista { display: grid; gap: 6px; max-height: 320px; overflow-y: auto; margin: 12px 0; padding-right: 4px; }
+.reporte-item {
+  display: grid; gap: 2px; padding: 10px 14px; text-align: left;
+  border: 1px solid var(--border); border-radius: 12px; background: #fff; font: inherit; cursor: pointer;
+}
+.reporte-item:hover { border-color: var(--violeta); }
+.reporte-item.elegido { border-color: var(--violeta); box-shadow: 0 0 0 1px var(--violeta) inset; }
+.reporte-item strong { font-size: 13px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.reporte-item small { font-size: 11px; color: var(--muted-ink); }
+.reporte-url { display: grid; gap: 6px; }
+.reporte-url span { font-size: 12px; color: var(--muted-ink); }
+/* Elegir el archivo es la acción previa a todo: se distingue del resto. */
+.month-action.is-elegir { min-width: 124px; background: transparent; border: 1px solid var(--border); color: var(--muted-ink); }
+.month-action.is-elegir:hover:not(:disabled) { border-color: var(--violeta); color: var(--violeta); }
+
 /* ── Seguimiento de tareas ─────────────────────────────────────────────
    Usa las mismas piezas que el resto del panel: la grilla de indicadores para
    las cifras y `module-table` para las listas. Lo único propio es el color de

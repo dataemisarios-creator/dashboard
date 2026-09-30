@@ -1,6 +1,6 @@
 import {
   exigirSesion, usuarioDeSesion, permisosDe, puedeVer,
-  puedeAprobar, leerPublicados, guardarPublicados,
+  puedeAprobar, leerReportes, guardarReportes,
 } from './_comun.js';
 import { buscarCliente } from './_cuentas.js';
 
@@ -123,41 +123,68 @@ async function hijos(carpeta) {
   return salida;
 }
 
-/* Un mes puede tener más de un archivo; gana el más reciente, que es lo que
-   pasa cuando alguien vuelve a subir el reporte corregido. */
-async function mesesDe(carpeta) {
+/* Todos los archivos de la carpeta del cliente, a cualquier profundidad. Es lo
+   que alimenta tanto la detección por nombre como el cuadro para elegir uno a
+   mano. Se guarda la subcarpeta de cada archivo para poder distinguir dos que
+   se llamen igual. */
+async function archivosDe(carpeta) {
   const guardado = cache.get(carpeta);
-  if (guardado && guardado.vence > Date.now()) return guardado.meses;
+  if (guardado && guardado.vence > Date.now()) return guardado.archivos;
 
-  const meses = {};
-  let nivel = [carpeta];
+  const archivos = [];
+  let nivel = [{ id: carpeta, ruta: '' }];
   for (let hondo = 0; hondo < PROFUNDIDAD && nivel.length; hondo += 1) {
     const siguiente = [];
-    for (const id of nivel) {
+    for (const { id, ruta } of nivel) {
       for (const f of await hijos(id)) {
-        if (f.mimeType === 'application/vnd.google-apps.folder') { siguiente.push(f.id); continue; }
-        const marca = MES.exec(f.name);
-        if (!marca) continue;
-        const clave = `${marca[1]}-${marca[2]}`;
-        const previo = meses[clave];
-        if (previo && previo.modificado >= f.modifiedTime) continue;
-        meses[clave] = {
+        if (f.mimeType === 'application/vnd.google-apps.folder') {
+          siguiente.push({ id: f.id, ruta: ruta ? `${ruta} / ${f.name}` : f.name });
+          continue;
+        }
+        archivos.push({
           id: f.id,
           nombre: f.name,
           tipo: f.mimeType,
           peso: Number(f.size) || null,
           modificado: f.modifiedTime,
+          carpeta: ruta,
           /* El enlace a Drive es para quien trabaja el reporte: abre el archivo
              donde vive, con los permisos de su propia cuenta de Google. Si no
              lo tiene, Drive le ofrece pedirlo, que es lo que corresponde. */
           enlace: f.webViewLink || null,
-        };
+        });
       }
     }
     nivel = siguiente;
   }
 
-  cache.set(carpeta, { meses, vence: Date.now() + CACHE_MS });
+  archivos.sort((a, b) => String(b.modificado).localeCompare(String(a.modificado)));
+  cache.set(carpeta, { archivos, vence: Date.now() + CACHE_MS });
+  return archivos;
+}
+
+/* El archivo de cada mes: primero el que alguien eligió a mano, y si no hay,
+   el que el nombre delata. La convención de nombres pasa a ser una sugerencia;
+   la elección explícita siempre manda.
+   Si dos archivos sin asignar apuntan al mismo mes gana el más reciente, que es
+   lo que pasa cuando se vuelve a subir el reporte corregido. */
+function mesesDe(archivos, asignados = {}) {
+  const meses = {};
+  for (const f of archivos) {
+    const marca = MES.exec(f.nombre);
+    if (!marca) continue;
+    const clave = `${marca[1]}-${marca[2]}`;
+    const previo = meses[clave];
+    if (previo && previo.modificado >= f.modificado) continue;
+    meses[clave] = { ...f, porNombre: true };
+  }
+  for (const [mes, id] of Object.entries(asignados)) {
+    const elegido = archivos.find((f) => f.id === id);
+    /* Si el archivo elegido ya no está en la carpeta, se deja el mes como si
+       no tuviera nada: es preferible a ofrecer una descarga que va a fallar. */
+    if (elegido) meses[mes] = { ...elegido, porNombre: false };
+    else delete meses[mes];
+  }
   return meses;
 }
 
@@ -168,63 +195,100 @@ async function mesesDe(carpeta) {
 const puedeVerCliente = (permisos, cliente) =>
   permisos === 'todas' || cliente.cuentas.some((c) => puedeVer(permisos, cliente.id, c.id));
 
+/* Un enlace de Drive pegado a mano: sirven tanto /file/d/<id>/view como
+   /open?id=<id> o el id pelado. Después se comprueba igual que el archivo esté
+   en la carpeta de ese cliente, así que pegar cualquier cosa no alcanza. */
+function idDeEnlace(texto) {
+  const limpio = String(texto || '').trim();
+  const m = limpio.match(/\/d\/([\w-]{10,})/) || limpio.match(/[?&]id=([\w-]{10,})/);
+  if (m) return m[1];
+  return /^[\w-]{10,}$/.test(limpio) ? limpio : '';
+}
+
 export default async function handler(req, res) {
   const sesion = exigirSesion(req, res);
   if (!sesion) return;
 
   try {
-    /* Al leer, el cliente viene en la consulta; al aprobar, en el cuerpo. */
+    /* Al leer, el cliente viene en la consulta; al escribir, en el cuerpo. */
     const cliente = buscarCliente(String(req.query?.cliente || req.body?.cliente || ''));
     if (!cliente) return res.status(404).json({ error: 'Ese cliente no existe.' });
-    if (!cliente.drive) return res.status(200).json({ meses: {}, publicados: {}, aprueba: false });
+    if (!cliente.drive)
+      return res.status(200).json({ meses: {}, publicados: {}, archivos: [], aprueba: false });
 
     const usuario = await usuarioDeSesion(sesion);
     const permisos = permisosDe(usuario);
     if (!puedeVerCliente(permisos, cliente))
       return res.status(403).json({ error: 'No tenés acceso a los reportes de este cliente.' });
 
-    /* Aprobar y publicar es del administrador y del PM; el resto sólo lee. */
+    /* Elegir el archivo, aprobar y publicar son del administrador y del PM; el
+       resto sólo lee. */
     const aprueba = puedeAprobar(usuario);
 
     if (req.method === 'POST') {
       if (!aprueba)
-        return res.status(403).json({ error: 'Sólo un administrador o un PM puede aprobar un reporte.' });
+        return res.status(403).json({ error: 'Sólo un administrador o un PM puede tocar los reportes.' });
 
       const mes = String(req.body?.mes || '');
       if (!/^\d{4}-\d{2}$/.test(mes))
         return res.status(400).json({ error: 'Falta el mes del reporte.' });
 
-      const meses = await mesesDe(cliente.drive);
-      const publicados = await leerPublicados(cliente.id);
+      const guardado = await leerReportes(cliente.id);
+      const archivos = await archivosDe(cliente.drive);
 
-      if (req.body?.publicar === false) delete publicados[mes];
-      else {
-        if (!meses[mes])
-          return res.status(409).json({ error: 'No hay ningún archivo para ese mes en la carpeta.' });
-        publicados[mes] = {
-          por: usuario.nombre || usuario.usuario,
-          cuando: new Date().toISOString(),
-          /* Se guarda de qué archivo se trataba: si después alguien sube uno
-             nuevo, se nota que lo aprobado no es lo que está publicado. */
-          archivo: meses[mes].id,
-        };
+      /* Elegir a mano qué archivo es el reporte de ese mes. */
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'elegir')) {
+        const elegido = req.body.elegir === null ? '' : idDeEnlace(req.body.elegir);
+        if (!elegido) delete guardado.asignados[mes];
+        else {
+          if (!archivos.some((f) => f.id === elegido))
+            return res.status(404).json({ error: 'Ese archivo no está en la carpeta de este cliente.' });
+          guardado.asignados[mes] = elegido;
+        }
+        /* Cambiar el archivo de un mes ya publicado lo despublica: el cliente
+           no puede pasar a descargar algo que nadie revisó. */
+        if (guardado.publicados[mes] && guardado.publicados[mes].archivo !== guardado.asignados[mes])
+          delete guardado.publicados[mes];
+      } else {
+        const meses = mesesDe(archivos, guardado.asignados);
+        if (req.body?.publicar === false) delete guardado.publicados[mes];
+        else {
+          if (!meses[mes])
+            return res.status(409).json({ error: 'Ese mes todavía no tiene un archivo asignado.' });
+          guardado.publicados[mes] = {
+            por: usuario.nombre || usuario.usuario,
+            cuando: new Date().toISOString(),
+            /* Se guarda de qué archivo se trataba: si después alguien lo
+               cambia, se nota que lo aprobado no es lo que está publicado. */
+            archivo: meses[mes].id,
+          };
+        }
       }
-      await guardarPublicados(cliente.id, publicados);
-      return res.status(200).json({ meses, publicados, aprueba });
+
+      await guardarReportes(cliente.id, guardado);
+      return res.status(200).json({
+        meses: mesesDe(archivos, guardado.asignados),
+        publicados: guardado.publicados,
+        aprueba,
+      });
     }
 
-    const meses = await mesesDe(cliente.drive);
-    const publicados = await leerPublicados(cliente.id);
+    const guardado = await leerReportes(cliente.id);
+    const archivos = await archivosDe(cliente.drive);
+    const meses = mesesDe(archivos, guardado.asignados);
+    const publicados = guardado.publicados;
     const archivo = String(req.query?.archivo || '');
 
     if (!archivo) {
       res.setHeader('Cache-Control', 'private, max-age=0, no-store');
-      return res.status(200).json({ meses, publicados, aprueba });
+      /* La lista completa de la carpeta sólo la ve quien puede elegir: al
+         cliente no le sirve y le mostraría archivos que no son su reporte. */
+      return res.status(200).json({ meses, publicados, aprueba, archivos: aprueba ? archivos : [] });
     }
 
-    /* Sólo se entrega un archivo que esté en la carpeta de este cliente: con
-       el id a secas, cualquiera podría pedir cualquier cosa que la cuenta de
-       servicio alcance a leer. */
+    /* Sólo se entrega un archivo que sea el reporte de algún mes de este
+       cliente: con el id a secas, cualquiera podría pedir cualquier cosa que la
+       cuenta de servicio alcance a leer. */
     const mes = Object.keys(meses).find((k) => meses[k].id === archivo);
     if (!mes) return res.status(404).json({ error: 'Ese reporte ya no está en la carpeta.' });
 

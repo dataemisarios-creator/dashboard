@@ -274,22 +274,31 @@ async function versionesDeReportes(cliente) {
   return blobs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
 }
 
-export async function leerPublicados(cliente) {
-  if (!hayBlob()) return {};
+const REPORTES_VACIO = { publicados: {}, asignados: {} };
+
+/* Guarda dos cosas por cliente: qué meses están publicados y qué archivo de
+   Drive se eligió para cada mes. La primera versión guardaba sólo lo publicado,
+   como un objeto de meses sueltos; si llega con esa forma se la acomoda para no
+   perder las aprobaciones que ya existían. */
+export async function leerReportes(cliente) {
+  if (!hayBlob()) return { ...REPORTES_VACIO };
   try {
     for (const blob of (await versionesDeReportes(cliente)).slice(0, 2)) {
       const respuesta = await fetch(blob.url, { cache: 'no-store' });
       if (!respuesta.ok) continue;
       const datos = JSON.parse(await descifrar(Buffer.from(await respuesta.arrayBuffer())));
-      return datos && typeof datos === 'object' ? datos : {};
+      if (!datos || typeof datos !== 'object') return { ...REPORTES_VACIO };
+      if (datos.publicados || datos.asignados)
+        return { publicados: datos.publicados || {}, asignados: datos.asignados || {} };
+      return { publicados: datos, asignados: {} };
     }
-    return {};
+    return { ...REPORTES_VACIO };
   } catch {
-    return {};
+    return { ...REPORTES_VACIO };
   }
 }
 
-export async function guardarPublicados(cliente, datos) {
+export async function guardarReportes(cliente, datos) {
   if (!hayBlob()) throw new Error('No hay almacenamiento conectado para guardar las aprobaciones.');
   const viejas = await versionesDeReportes(cliente);
   await put(`${PREFIJO_REPORTES}${cliente}-${Date.now()}.json`, await cifrar(JSON.stringify(datos)), {

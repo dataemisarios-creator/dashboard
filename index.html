@@ -508,6 +508,28 @@
       </div>
     </dialog>
 
+    <!-- Elegir a mano qué archivo de Drive es el reporte de un mes. La lista
+         sale de la misma carpeta del cliente que ya lee el servidor, así que
+         nadie necesita cuenta de Google para verla. -->
+    <dialog class="kpi-dialog reporte-dialog" id="reporte-dialog">
+      <div class="dialog-body">
+        <div class="dialog-head"><strong id="reporte-titulo">Elegir el reporte</strong></div>
+        <p class="reporte-sub" id="reporte-sub"></p>
+        <label class="reporte-buscar"><span class="sr-only">Buscar un archivo</span>
+          <input type="search" id="reporte-buscar" placeholder="Buscar por nombre…" autocomplete="off">
+        </label>
+        <div class="reporte-lista" id="reporte-lista"></div>
+        <label class="reporte-url"><span>O pegá el enlace del archivo en Drive</span>
+          <input type="text" id="reporte-url" placeholder="https://drive.google.com/file/d/…" autocomplete="off">
+        </label>
+        <div class="dialog-buttons">
+          <button class="primary-action" id="reporte-usar" type="button" disabled>Usar este archivo</button>
+          <button class="neutral-action" id="reporte-cancelar" type="button">Cancelar</button>
+          <button class="neutral-action" id="reporte-quitar" type="button" hidden>Quitar la asignación</button>
+        </div>
+      </div>
+    </dialog>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="./app-v2.js"></script>
     <script src="./app-shell.js"></script>

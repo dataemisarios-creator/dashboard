@@ -459,6 +459,7 @@ function pintarReportesRapidos() {
    pide a /api/drive, que es quien tiene la credencial y quien decide. */
 let mesesConReporte = {};
 let mesesPublicados = {};
+let archivosDeDrive = [];
 let puedoAprobar = false;
 let pedidoDeMeses = 0;
 
@@ -475,6 +476,7 @@ async function cargarMeses() {
     if (pedido !== pedidoDeMeses) return;
     mesesConReporte = datos.meses || {};
     mesesPublicados = datos.publicados || {};
+    archivosDeDrive = datos.archivos || [];
     puedoAprobar = !!datos.aprueba;
   } catch (e) {
     if (pedido !== pedidoDeMeses) return;
@@ -530,6 +532,7 @@ function pintarMeses(cargando = false) {
     return `<div class="month-row${abierto ? " is-future" : ""}">
       <span class="month-name">${mes}</span>
       ${nota}
+      ${aprueba ? `<button class="month-action is-elegir" type="button" data-elegir="${i}" ${abierto || cargando ? "disabled" : ""}>${reporte ? "CAMBIAR" : "SELECCIONAR"}</button>` : ""}
       <button class="month-action" type="button" data-mes="${i}" ${listo ? "" : "disabled"}>${entrar}</button>
       ${aprueba ? `<button class="month-action is-approve${sello ? " esta-publicado" : ""}" type="button" data-aprobar="${i}" ${hay ? "" : "disabled"}>${sello ? "QUITAR PUBLICACIÓN" : "APROBAR Y PUBLICAR"}</button>` : ""}
     </div>`;
@@ -538,6 +541,7 @@ function pintarMeses(cargando = false) {
   $$("[data-mes]").forEach((b) => (b.onclick = () =>
     (descarga ? bajarReporte : abrirEnDrive)(Number(b.dataset.mes))));
   $$("[data-aprobar]").forEach((b) => (b.onclick = () => cambiarPublicacion(Number(b.dataset.aprobar), b)));
+  $$("[data-elegir]").forEach((b) => (b.onclick = () => abrirElector(Number(b.dataset.elegir))));
 }
 
 /* Quien trabaja el reporte va al archivo donde vive, con su propia cuenta de
@@ -561,6 +565,94 @@ function bajarReporte(i) {
   document.body.appendChild(enlace);
   enlace.click();
   enlace.remove();
+}
+
+/* ── Elegir el archivo de un mes ─────────────────────────────────────────
+   La lista sale de la carpeta del cliente, que el servidor ya lee con la
+   cuenta de servicio. Así nadie necesita cuenta de Google ni autorizar nada:
+   es el mismo permiso que ya usa el resto de la sección. */
+
+let mesQueSeElige = null;
+let archivoElegido = "";
+
+const pesoCorto = (bytes) => {
+  if (!bytes) return "";
+  const mb = bytes / 1048576;
+  return mb >= 1 ? `${mb.toFixed(1).replace(".", ",")} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+};
+
+function abrirElector(i) {
+  if (!clienteActual) return;
+  const anio = Number($("#report-year").value);
+  mesQueSeElige = claveDeMes(anio, i);
+  archivoElegido = mesesConReporte[mesQueSeElige]?.id || "";
+
+  $("#reporte-titulo").textContent = `Reporte de ${MESES[i].toLowerCase()} de ${anio}`;
+  $("#reporte-sub").textContent = archivosDeDrive.length
+    ? `Elegí cuál de los archivos de la carpeta de ${clienteActual.nombre} es el reporte de ese mes.`
+    : `No hay ningún archivo en la carpeta de ${clienteActual.nombre}. Subilo a Drive y volvé a entrar.`;
+  $("#reporte-buscar").value = "";
+  $("#reporte-url").value = "";
+  $("#reporte-quitar").hidden = !mesesConReporte[mesQueSeElige];
+  pintarArchivos();
+  $("#reporte-dialog").showModal();
+}
+
+function pintarArchivos() {
+  const busca = $("#reporte-buscar").value.trim().toLowerCase();
+  const lista = archivosDeDrive.filter((f) =>
+    !busca || f.nombre.toLowerCase().includes(busca) || (f.carpeta || "").toLowerCase().includes(busca));
+
+  $("#reporte-lista").innerHTML = lista.length
+    ? lista.map((f) => `<button class="reporte-item${f.id === archivoElegido ? " elegido" : ""}" type="button" data-archivo="${f.id}">
+        <strong>${f.nombre}</strong>
+        <small>${[f.carpeta, fechaCorta(f.modificado), pesoCorto(f.peso)].filter(Boolean).join(" · ")}</small>
+      </button>`).join("")
+    : `<p class="tasks-vacio">Ningún archivo coincide con esa búsqueda.</p>`;
+
+  $$("[data-archivo]").forEach((b) => (b.onclick = () => {
+    archivoElegido = b.dataset.archivo;
+    $("#reporte-url").value = "";
+    pintarArchivos();
+  }));
+  $("#reporte-usar").disabled = !archivoElegido && !$("#reporte-url").value.trim();
+}
+
+$("#reporte-buscar").oninput = () => pintarArchivos();
+$("#reporte-url").oninput = () => {
+  if ($("#reporte-url").value.trim()) archivoElegido = "";
+  pintarArchivos();
+};
+$("#reporte-cancelar").onclick = () => $("#reporte-dialog").close();
+$("#reporte-usar").onclick = () => guardarEleccion($("#reporte-url").value.trim() || archivoElegido);
+$("#reporte-quitar").onclick = () => {
+  const nombre = $("#reporte-titulo").textContent.toLowerCase();
+  if (confirm(`Se va a quitar el archivo asignado al ${nombre}. Si estaba publicado, el cliente deja de poder descargarlo. ¿Seguís?`))
+    guardarEleccion(null);
+};
+
+async function guardarEleccion(elegir) {
+  if (!clienteActual || !mesQueSeElige) return;
+  const estaba = mesesPublicados[mesQueSeElige];
+  $("#reporte-usar").disabled = true;
+  try {
+    const datos = await api("/api/drive", {
+      method: "POST",
+      body: { cliente: clienteActual.id, mes: mesQueSeElige, elegir },
+    });
+    mesesConReporte = datos.meses || {};
+    mesesPublicados = datos.publicados || {};
+    $("#reporte-dialog").close();
+    /* Cambiar el archivo de un mes publicado lo despublica del lado del
+       servidor: conviene decirlo, o parece que se perdió la aprobación. */
+    aviso(elegir === null ? "El mes quedó sin archivo asignado."
+      : estaba && !mesesPublicados[mesQueSeElige]
+        ? "Archivo asignado. Como el mes ya estaba publicado, hay que volver a aprobarlo."
+        : "Archivo asignado.");
+  } catch (e) {
+    aviso(`No se pudo guardar: ${e.message}`);
+  }
+  pintarMeses();
 }
 
 async function cambiarPublicacion(i, boton) {
