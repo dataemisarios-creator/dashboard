@@ -1,4 +1,10 @@
-<!doctype html>
+/* Vercel sirve su propio cartel de «not found», en inglés y sin salida. Esta
+   función lo reemplaza: `vercel.json` manda acá todo lo que no sea un archivo
+   del sitio ni un endpoint de la API, y devuelve la página con el estado 404
+   que corresponde. La convención de dejar un 404.html suelto no alcanza:
+   `cleanUrls` le saca la extensión y Vercel deja de reconocerlo. */
+
+const PAGINA = `<!doctype html>
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
@@ -53,3 +59,10 @@
     </main>
   </body>
 </html>
+`;
+
+export default function handler(req, res) {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+  return res.status(404).send(PAGINA);
+}
