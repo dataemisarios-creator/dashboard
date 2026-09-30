@@ -287,23 +287,27 @@ const ES_MES = /^\d{4}-\d{2}$/;
    haría que una escritura ensuciara la próxima lectura. */
 export async function leerReportes(cliente) {
   if (!hayBlob()) return vacioDeReportes();
-  try {
-    for (const blob of (await versionesDeReportes(cliente)).slice(0, 2)) {
+  const versiones = await versionesDeReportes(cliente);
+  for (const blob of versiones.slice(0, 2)) {
+    try {
       const respuesta = await fetch(blob.url, { cache: 'no-store' });
       if (!respuesta.ok) continue;
       const datos = JSON.parse(await descifrar(Buffer.from(await respuesta.arrayBuffer())));
-      if (!datos || typeof datos !== 'object') return vacioDeReportes();
+      if (!datos || typeof datos !== 'object') continue;
       const sueltos = Object.fromEntries(
         Object.entries(datos).filter(([clave]) => ES_MES.test(clave)));
       return {
         publicados: { ...sueltos, ...(datos.publicados || {}) },
         asignados: { ...(datos.asignados || {}) },
       };
-    }
-    return vacioDeReportes();
-  } catch {
-    return vacioDeReportes();
+    } catch { /* se prueba con la versión anterior */ }
   }
+  /* Nunca hubo nada guardado: un cliente nuevo. Eso sí es una lista vacía. */
+  if (!versiones.length) return vacioDeReportes();
+  /* Había algo guardado y no se pudo leer. Devolver una lista vacía haría que
+     la siguiente escritura la pisara, y se perderían aprobaciones de reportes
+     que el cliente ya está descargando. Es preferible fallar a la vista. */
+  throw new Error('No se pudo leer lo guardado de este cliente. No se tocó nada; probá de nuevo en un momento.');
 }
 
 export async function guardarReportes(cliente, datos) {
