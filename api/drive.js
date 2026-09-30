@@ -24,6 +24,13 @@ const API = 'https://www.googleapis.com/drive/v3/files';
    dejar todo suelto, y el panel lo encuentra igual. */
 const MES = /^(\d{4})-(\d{2})\b/;
 const PROFUNDIDAD = 3;
+/* Los tipos nativos de Drive. No se descargan: se exportan. */
+const NATIVOS = new Set([
+  'application/vnd.google-apps.document',
+  'application/vnd.google-apps.spreadsheet',
+  'application/vnd.google-apps.presentation',
+  'application/vnd.google-apps.drawing',
+]);
 const CACHE_MS = 5 * 60 * 1000;
 
 const cache = new Map();
@@ -127,9 +134,12 @@ async function hijos(carpeta) {
    que alimenta tanto la detección por nombre como el cuadro para elegir uno a
    mano. Se guarda la subcarpeta de cada archivo para poder distinguir dos que
    se llamen igual. */
-async function archivosDe(carpeta) {
+async function archivosDe(carpeta, refrescar = false) {
   const guardado = cache.get(carpeta);
-  if (guardado && guardado.vence > Date.now()) return guardado.archivos;
+  /* La caché evita machacar a Drive mientras alguien mira la pantalla, pero
+     tiene que poder saltearse: si acaba de subir un archivo y aprieta
+     Actualizar, no puede seguir viendo la lista de hace cinco minutos. */
+  if (!refrescar && guardado && guardado.vence > Date.now()) return guardado.archivos;
 
   const archivos = [];
   let nivel = [{ id: carpeta, ruta: '' }];
@@ -274,7 +284,7 @@ export default async function handler(req, res) {
     }
 
     const guardado = await leerReportes(cliente.id);
-    const archivos = await archivosDe(cliente.drive);
+    const archivos = await archivosDe(cliente.drive, req.query?.refrescar === '1');
     const meses = mesesDe(archivos, guardado.asignados);
     const publicados = guardado.publicados;
     const archivo = String(req.query?.archivo || '');
@@ -299,9 +309,17 @@ export default async function handler(req, res) {
 
     const encontrado = meses[mes];
 
-    const r = await drive(`${API}/${archivo}`, { alt: 'media' });
-    res.setHeader('Content-Type', encontrado.tipo || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${encontrado.nombre.replace(/"/g, '')}"`);
+    /* Un documento, una hoja o una presentación nativos de Google no tienen
+       bytes que descargar: hay que exportarlos. Se entregan en PDF, que es lo
+       que un cliente espera recibir como reporte. */
+    const nativo = NATIVOS.has(encontrado.tipo);
+    const r = nativo
+      ? await drive(`${API}/${archivo}/export`, { mimeType: 'application/pdf' })
+      : await drive(`${API}/${archivo}`, { alt: 'media' });
+    const nombre = nativo && !/\.pdf$/i.test(encontrado.nombre)
+      ? `${encontrado.nombre}.pdf` : encontrado.nombre;
+    res.setHeader('Content-Type', nativo ? 'application/pdf' : (encontrado.tipo || 'application/octet-stream'));
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre.replace(/"/g, '')}"`);
     res.setHeader('Cache-Control', 'private, max-age=0, no-store');
     return res.status(200).send(Buffer.from(await r.arrayBuffer()));
   } catch (e) {

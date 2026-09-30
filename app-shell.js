@@ -153,7 +153,7 @@ $("#connection").onclick = () => {
    esas dos pantallas no vienen de ahí. */
 $("#refrescar").onclick = () => {
   if (vistaActiva === "tasks") { pintarTareas(true); return; }
-  if (vistaActiva === "reports") { pintarReportes(); return; }
+  if (vistaActiva === "reports") { pintarReportes(true); return; }
   if (window.DatosEmisarios) window.DatosEmisarios.cargar();
 };
 pintarConexion();
@@ -396,10 +396,10 @@ const ACCIONES_POR_ROL = {
 };
 const accionesDelPerfil = () => ACCIONES_POR_ROL[sesion?.rol] || ACCIONES_POR_ROL.Cliente;
 
-function pintarReportes() {
+function pintarReportes(forzar = false) {
   pintarReportesRapidos();
   pintarAnios();
-  cargarMeses();
+  cargarMeses(forzar);
 }
 
 /* Marcas de cada plataforma, planas y con su color, para reconocer la tarjeta
@@ -463,14 +463,15 @@ let archivosDeDrive = [];
 let puedoAprobar = false;
 let pedidoDeMeses = 0;
 
-async function cargarMeses() {
+async function cargarMeses(forzar = false) {
   if (!clienteActual) { mesesConReporte = {}; mesesPublicados = {}; pintarMeses(); return; }
   const pedido = (pedidoDeMeses += 1);
   mesesConReporte = {};
   mesesPublicados = {};
   pintarMeses(true);
+  if (forzar) aviso("Volviendo a leer la carpeta de Drive…");
   try {
-    const datos = await api(`/api/drive?cliente=${encodeURIComponent(clienteActual.id)}`);
+    const datos = await api(`/api/drive?cliente=${encodeURIComponent(clienteActual.id)}${forzar ? "&refrescar=1" : ""}`);
     /* Si mientras tanto se cambió de cliente, esta respuesta ya no corresponde
        a lo que se está mirando. */
     if (pedido !== pedidoDeMeses) return;
