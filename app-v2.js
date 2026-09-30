@@ -1183,15 +1183,14 @@ function renderTable(){
     }
   }
 
-  /* Si una fila no pasa el filtro, tampoco pasan las que cuelgan de ella: un
-     anuncio no puede quedar colgando sin su campaña. */
-  const ocultas=[];
-  const visibles=filasTabla.filter(f=>{
-    if(ocultas.some(c=>f.clave.startsWith(`${c}::`))) return false;
-    if(pasaEstadoTabla(f.estado)) return true;
-    ocultas.push(f.clave);
-    return false;
-  });
+  /* Una fila se ve si pasa el filtro o si cuelga de ella alguna que sí pasa.
+     Sin esa segunda parte, pedir «Desactivados» no mostraba nada: los anuncios
+     pausados viven dentro de campañas activas, y al esconder la campaña se
+     iban con ella. La fila que queda sólo de contexto conserva su punto de
+     estado, así que no engaña sobre lo que es. */
+  const propias=filasTabla.filter(f=>pasaEstadoTabla(f.estado)).map(f=>f.clave);
+  const visibles=filasTabla.filter(f=>
+    propias.includes(f.clave) || propias.some(c=>c.startsWith(`${f.clave}::`)));
   if(!visibles.length){
     body.innerHTML=`<tr><td colspan="${metrics.length+1}">No hay filas con ese estado en este período.</td></tr>`;
     return;
