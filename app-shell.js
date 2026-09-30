@@ -594,23 +594,61 @@ function abrirElector(i) {
     : `No hay ningún archivo en la carpeta de ${clienteActual.nombre}. Subilo a Drive y volvé a entrar.`;
   $("#reporte-buscar").value = "";
   $("#reporte-url").value = "";
+  /* Si el mes ya tiene archivo, el cuadro abre en su carpeta: es donde la
+     persona va a querer mirar. */
+  rutaDelElector = mesesConReporte[mesQueSeElige]?.carpeta || "";
   $("#reporte-quitar").hidden = !mesesConReporte[mesQueSeElige];
   pintarArchivos();
   $("#reporte-dialog").showModal();
 }
 
+/* La carpeta de un cliente puede estar ordenada por año, así que el cuadro se
+   recorre como en Drive: primero las carpetas, se entra con un clic y recién
+   ahí aparecen sus archivos. Buscar, en cambio, mira todo el árbol de una vez:
+   quien busca no quiere navegar, quiere encontrar. */
+const SEPARADOR = " / ";
+let rutaDelElector = "";
+
+const trozos = (ruta) => (ruta ? ruta.split(SEPARADOR) : []);
+
 function pintarArchivos() {
   const busca = $("#reporte-buscar").value.trim().toLowerCase();
-  const lista = archivosDeDrive.filter((f) =>
-    !busca || f.nombre.toLowerCase().includes(busca) || (f.carpeta || "").toLowerCase().includes(busca));
+  const caja = $("#reporte-lista");
 
-  $("#reporte-lista").innerHTML = lista.length
-    ? lista.map((f) => `<button class="reporte-item${f.id === archivoElegido ? " elegido" : ""}" type="button" data-archivo="${f.id}">
-        <strong>${f.nombre}</strong>
-        <small>${[f.carpeta, fechaCorta(f.modificado), pesoCorto(f.peso)].filter(Boolean).join(" · ")}</small>
-      </button>`).join("")
-    : `<p class="tasks-vacio">Ningún archivo coincide con esa búsqueda.</p>`;
+  if (busca) {
+    const halla = archivosDeDrive.filter((f) =>
+      f.nombre.toLowerCase().includes(busca) || (f.carpeta || "").toLowerCase().includes(busca));
+    caja.innerHTML = halla.length
+      ? halla.map(filaDeArchivo).join("")
+      : `<p class="tasks-vacio">Ningún archivo coincide con esa búsqueda.</p>`;
+  } else {
+    const aqui = trozos(rutaDelElector);
+    /* Cuelga de acá si su ruta empieza con la actual. */
+    const dentro = archivosDeDrive.filter((f) => {
+      const suyos = trozos(f.carpeta || "");
+      return suyos.length >= aqui.length && aqui.every((t, i) => suyos[i] === t);
+    });
+    const carpetas = [...new Set(dentro
+      .map((f) => trozos(f.carpeta || "")[aqui.length])
+      .filter(Boolean))].sort((a, b) => b.localeCompare(a, "es"));
+    const sueltos = dentro.filter((f) => (f.carpeta || "") === rutaDelElector);
 
+    const migas = rutaDelElector
+      ? `<div class="reporte-migas">
+          <button type="button" data-ir="">Inicio</button>
+          ${aqui.map((t, i) => `<span>/</span><button type="button" data-ir="${aqui.slice(0, i + 1).join(SEPARADOR)}">${t}</button>`).join("")}
+        </div>` : "";
+
+    caja.innerHTML = migas
+      + carpetas.map((c) => `<button class="reporte-item es-carpeta" type="button" data-carpeta="${rutaDelElector ? rutaDelElector + SEPARADOR + c : c}">
+          <strong>${c}</strong><small>Carpeta</small>
+        </button>`).join("")
+      + sueltos.map(filaDeArchivo).join("")
+      + (carpetas.length || sueltos.length ? "" : `<p class="tasks-vacio">Esta carpeta está vacía.</p>`);
+  }
+
+  $$("[data-carpeta]").forEach((b) => (b.onclick = () => { rutaDelElector = b.dataset.carpeta; pintarArchivos(); }));
+  $$("[data-ir]").forEach((b) => (b.onclick = () => { rutaDelElector = b.dataset.ir; pintarArchivos(); }));
   $$("[data-archivo]").forEach((b) => (b.onclick = () => {
     archivoElegido = b.dataset.archivo;
     $("#reporte-url").value = "";
@@ -618,6 +656,11 @@ function pintarArchivos() {
   }));
   $("#reporte-usar").disabled = !archivoElegido && !$("#reporte-url").value.trim();
 }
+
+const filaDeArchivo = (f) => `<button class="reporte-item${f.id === archivoElegido ? " elegido" : ""}" type="button" data-archivo="${f.id}">
+    <strong>${f.nombre}</strong>
+    <small>${[f.carpeta, fechaCorta(f.modificado), pesoCorto(f.peso)].filter(Boolean).join(" · ")}</small>
+  </button>`;
 
 $("#reporte-buscar").oninput = () => pintarArchivos();
 $("#reporte-url").oninput = () => {
