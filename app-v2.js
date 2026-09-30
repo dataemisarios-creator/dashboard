@@ -75,7 +75,7 @@ const platforms = {
 };
 
 const state = {
-  platform: "meta", objective: "__todos", estadoCampanias: "todas", rapido: "thisMonth", start: "", end: "", comparison: "previous", granularity: "day",
+  platform: "meta", objective: "__todos", estadoCampanias: "todas", estadoTabla: "todos", rapido: "thisMonth", start: "", end: "", comparison: "previous", granularity: "day",
   selectedCampaigns: new Set(["meta-1","meta-2","meta-3"]), selectedMetrics: ["conversions","cpa"], chartTypes: { conversions: "bar", cpa: "line" },
   /* Las tarjetas de indicadores: una lista ordenada por plataforma. El usuario
      las quita, las agrega y las reordena arrastrando, así que el orden es suyo
@@ -759,6 +759,30 @@ function renderObjectives() {
 }
 const ESTADOS_CAMPANIA=[["todas","Todas"],["activa","Activas"],["pausada","En pausa"],["eliminada","Eliminadas"]];
 
+/* Filtro de la tabla de rendimiento, que es distinto del de arriba: aquél
+   elige qué campañas se consultan, éste esconde filas ya traídas, a cualquier
+   nivel. Hacía falta sobre todo en TikTok, donde la tabla baja directo de
+   campaña a anuncio y los anuncios pausados quedaban mezclados con los vivos. */
+const ESTADOS_TABLA=[["todos","Todos"],["activos","Activos"],["desactivados","Desactivados"]];
+/* «Activos» esconde lo pausado y lo eliminado, y deja pasar lo que no se puede
+   clasificar: mostrar una fila de estado desconocido es preferible a esconder
+   inversión sin avisar. */
+function pasaEstadoTabla(estado){
+  if(state.estadoTabla==="todos") return true;
+  const apagado = estado==="pausada" || estado==="eliminada";
+  return state.estadoTabla==="desactivados" ? apagado : !apagado;
+}
+function renderEstadosTabla(){
+  const caja=document.querySelector("#estados-tabla");
+  if(!caja) return;
+  caja.innerHTML=ESTADOS_TABLA.map(([id,texto])=>
+    `<button class="estado-chip ${id===state.estadoTabla?"active":""}" data-estado-tabla="${id}" type="button">${texto}</button>`).join("");
+  document.querySelectorAll("[data-estado-tabla]").forEach(b=>b.onclick=()=>{
+    state.estadoTabla=b.dataset.estadoTabla;
+    renderTable();
+  });
+}
+
 /* Las campañas que corresponden al objetivo elegido. Los dos filtros se
    afectan entre sí: el objetivo acota la lista de campañas y sus conteos por
    estado, y las campañas tildadas acotan los objetivos que se ofrecen. */
@@ -1092,6 +1116,7 @@ function ramaDe(filas, campania, niveles, valores){
 }
 
 function renderTable(){
+  renderEstadosTabla();
   const metrics=state.tableMetrics[DATOS.tipo];
   const head=document.querySelector("#performance-head"), body=document.querySelector("#performance-body");
   const hay=hayComparacion();
@@ -1158,7 +1183,21 @@ function renderTable(){
     }
   }
 
-  body.innerHTML=filasTabla.map(fila=>{
+  /* Si una fila no pasa el filtro, tampoco pasan las que cuelgan de ella: un
+     anuncio no puede quedar colgando sin su campaña. */
+  const ocultas=[];
+  const visibles=filasTabla.filter(f=>{
+    if(ocultas.some(c=>f.clave.startsWith(`${c}::`))) return false;
+    if(pasaEstadoTabla(f.estado)) return true;
+    ocultas.push(f.clave);
+    return false;
+  });
+  if(!visibles.length){
+    body.innerHTML=`<tr><td colspan="${metrics.length+1}">No hay filas con ese estado en este período.</td></tr>`;
+    return;
+  }
+
+  body.innerHTML=visibles.map(fila=>{
     /* El mismo punto que en el filtro de campañas: verde si sigue corriendo. */
     const nombre=fila.desplegable
       ? `<button class="row-toggle" data-row="${fila.clave}">${state.expandedRows.has(fila.clave)?"⌄":"›"} ${punto(fila.estado)}${fila.etiqueta}</button>`

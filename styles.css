@@ -295,7 +295,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   #agregar-kpi, #restablecer-kpi, #comparacion-aviso, .table-actions, .ampliar,
   .granularity, .skip-link, .toast, .sidebar-toggle, .popover, .paginado select,
   .paginado-botones, .series-control select, .series-values, .metric-toggle,
-  .texto-escala, .estados-extra, .campaign-states { display: none !important; }
+  .texto-escala, .estados-extra, .campaign-states, .estados-tabla { display: none !important; }
 
   /* La cortina de carga es un panel fijo sobre toda la pantalla: si llegara a
      estar visible al imprimir, se dibuja atravesada sobre la primera hoja y
@@ -554,6 +554,9 @@ td.negative { color: var(--danger); }
 /* Publicado es el estado que le importa al cliente: se marca en verde para
    distinguirlo de un mes que todavía está en borrador. */
 .month-nota.es-publicado { color: #1c7a4a; }
+/* Los chips de estado de la tabla van junto al botón de Columnas, en la
+   cabecera del panel de rendimiento. */
+.estados-tabla { display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* ── Seguimiento de tareas ─────────────────────────────────────────────
    Usa las mismas piezas que el resto del panel: la grilla de indicadores para

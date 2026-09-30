@@ -290,6 +290,11 @@
             <div class="panel-heading">
               <div><p class="eyebrow">DESGLOSE</p><h2 id="performance-title">Rendimiento por campaña</h2></div>
               <div class="table-actions">
+                <!-- Filtra las filas de la tabla a cualquier nivel: campañas,
+                     conjuntos y anuncios. Es distinto del filtro del
+                     desplegable de campañas, que elige qué campañas se
+                     consultan. -->
+                <div class="estados-tabla" id="estados-tabla" role="group" aria-label="Filtrar la tabla por estado"></div>
                 <div class="popover-wrap">
                   <button class="secondary-action" id="columns-trigger" type="button" aria-expanded="false">Columnas</button>
                   <div class="popover columns-popover" id="columns-popover" hidden><strong>Métricas de la tabla</strong><div id="column-options"></div></div>
